@@ -1,0 +1,194 @@
+/* ============================================================
+   Gmail Sender Screener - Options Page Styles
+   ============================================================ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+  font-size: 14px;
+  color: #202124;
+  background: #f6f8fc;
+  line-height: 1.5;
+}
+
+.container {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 32px 20px;
+}
+
+header {
+  margin-bottom: 24px;
+}
+
+h1 {
+  font-size: 22px;
+  font-weight: 600;
+  color: #1a73e8;
+}
+
+.subtitle {
+  color: #5f6368;
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+/* ---- Cards ---- */
+.card {
+  background: #fff;
+  border: 1px solid #e8eaed;
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.card h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card .hint {
+  font-size: 12px;
+  color: #5f6368;
+  margin-bottom: 12px;
+}
+
+.card-danger {
+  border-color: #f5c6c2;
+}
+
+/* ---- Count badge ---- */
+.count {
+  display: inline-block;
+  min-width: 20px;
+  padding: 0 6px;
+  background: #e8eaed;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  color: #3c4043;
+  line-height: 20px;
+}
+
+/* ---- Auth status ---- */
+#auth-status {
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.dot-green { background: #1e8e3e; }
+.dot-red { background: #d93025; }
+
+/* ---- Sender list ---- */
+.sender-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.sender-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid #f1f3f4;
+}
+.sender-row:last-child {
+  border-bottom: none;
+}
+
+.sender-email {
+  font-size: 13px;
+  color: #202124;
+  word-break: break-all;
+}
+
+.empty-state {
+  color: #9aa0a6;
+  font-size: 13px;
+  padding: 12px 0;
+  text-align: center;
+}
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-block;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.btn:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 1px;
+}
+
+.btn-primary {
+  background: #1a73e8;
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) {
+  background: #1765cc;
+}
+
+.btn-danger {
+  background: #d93025;
+  color: #fff;
+}
+.btn-danger:hover:not(:disabled) {
+  background: #c5221f;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.btn-remove {
+  background: #f1f3f4;
+  color: #5f6368;
+  flex-shrink: 0;
+}
+.btn-remove:hover:not(:disabled) {
+  background: #e8eaed;
+  color: #d93025;
+}
+
+/* ---- Footer ---- */
+footer {
+  margin-top: 20px;
+  text-align: center;
+}
+footer a {
+  font-size: 12px;
+  color: #1a73e8;
+  text-decoration: none;
+}
+footer a:hover {
+  text-decoration: underline;
+}
