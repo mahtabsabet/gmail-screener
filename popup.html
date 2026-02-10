@@ -36,70 +36,90 @@
     }
     .btn-primary { background: #1a73e8; color: #fff; }
     .btn-primary:hover { background: #1765cc; }
+    .btn-danger { background: #d93025; color: #fff; }
+    .btn-danger:hover { background: #b3261e; }
+    .btn:disabled { opacity: 0.5; cursor: default; }
     #sign-in-btn { display: none; }
 
-    /* Sender list */
-    .list-header {
-      font-size: 13px;
-      font-weight: 600;
+    /* Screener Mode section */
+    .mode-section {
       margin-top: 12px;
-      margin-bottom: 6px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .count {
-      display: inline-block;
-      min-width: 18px;
-      padding: 0 5px;
-      background: #fce8e6;
-      border-radius: 9px;
-      font-size: 11px;
-      font-weight: 600;
-      text-align: center;
-      color: #c5221f;
-      line-height: 18px;
-    }
-    #sender-list {
-      max-height: 300px;
-      overflow-y: auto;
+      padding: 12px;
       border: 1px solid #e8eaed;
       border-radius: 8px;
-      background: #fff;
+      background: #f8f9fa;
     }
-    .sender-row {
+    .mode-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 7px 10px;
-      border-bottom: 1px solid #f1f3f4;
+      margin-bottom: 8px;
     }
-    .sender-row:last-child { border-bottom: none; }
-    .sender-email {
-      font-size: 12px;
-      color: #202124;
-      word-break: break-all;
-      flex: 1;
-      margin-right: 8px;
+    .mode-label {
+      font-size: 13px;
+      font-weight: 600;
     }
-    .sender-domain { color: #5f6368; }
-    .btn-remove {
-      background: none;
-      border: none;
+    .mode-status {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .mode-status-on { background: #e6f4ea; color: #1e8e3e; }
+    .mode-status-off { background: #fce8e6; color: #d93025; }
+    .mode-desc {
+      font-size: 11px;
       color: #5f6368;
-      cursor: pointer;
-      font-size: 15px;
-      padding: 2px 4px;
-      border-radius: 4px;
-      line-height: 1;
-      flex-shrink: 0;
+      margin-bottom: 10px;
+      line-height: 1.4;
     }
-    .btn-remove:hover { background: #fce8e6; color: #c5221f; }
-    .empty-state {
-      color: #9aa0a6;
+    .mode-stats {
       font-size: 12px;
-      padding: 16px;
+      color: #3c4043;
+      margin-bottom: 8px;
+    }
+    .mode-stats strong { font-weight: 600; }
+
+    /* Checkbox for sweep options */
+    .sweep-opt {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #5f6368;
+      margin-bottom: 8px;
+    }
+    .sweep-opt input { margin: 0; }
+
+    /* Folder links */
+    .folder-links {
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .folder-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #1a73e8;
+      text-decoration: none;
+      cursor: pointer;
+      padding: 4px 0;
+    }
+    .folder-link:hover { text-decoration: underline; }
+    .folder-count {
+      display: inline-block;
+      min-width: 18px;
+      padding: 0 5px;
+      background: #e8eaed;
+      border-radius: 9px;
+      font-size: 10px;
+      font-weight: 600;
       text-align: center;
+      color: #3c4043;
+      line-height: 18px;
     }
 
     /* Footer links */
@@ -125,17 +145,37 @@
   <div id="auth-section">
     <div id="auth-status">Checking&hellip;</div>
     <button id="sign-in-btn" class="btn btn-primary">Sign in with Google</button>
+    <button id="reauth-btn" class="btn btn-primary" style="display:none; margin-top:4px;">Re-authorize (fix permissions)</button>
   </div>
 
-  <div class="list-header">
-    Screened out <span class="count" id="blocked-count">0</span>
-  </div>
-  <div id="sender-list">
-    <div class="empty-state">Loading&hellip;</div>
+  <div id="screener-section" style="display:none;">
+    <div class="mode-section">
+      <div class="mode-header">
+        <span class="mode-label">Screener Mode</span>
+        <span id="mode-status" class="mode-status mode-status-off">OFF</span>
+      </div>
+      <div class="mode-desc">
+        Routes most inbound mail to a Screener label. Triage senders as Allow or Screen Out from the Screener folder.
+      </div>
+      <div id="mode-stats" class="mode-stats" style="display:none;"></div>
+
+      <label id="sweep-label" class="sweep-opt" style="display:none;">
+        <input type="checkbox" id="sweep-checkbox" checked>
+        <span id="sweep-text">Sweep existing inbox</span>
+      </label>
+
+      <button id="enable-btn" class="btn btn-primary">Enable Screener Mode</button>
+      <button id="disable-btn" class="btn btn-danger" style="display:none;">Disable Screener Mode</button>
+    </div>
+
+    <div class="folder-links">
+      <a id="open-screener" class="folder-link">Screener folder</a>
+      <a id="open-screenout" class="folder-link">Screenout folder</a>
+      <a id="open-setaside" class="folder-link">Set Aside folder</a>
+    </div>
   </div>
 
   <div class="links">
-    <a id="open-screenout">Screenout folder</a>
     <a id="open-options">Full settings</a>
   </div>
 

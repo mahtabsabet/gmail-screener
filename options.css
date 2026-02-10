@@ -1,5 +1,5 @@
 /* ============================================================
-   Gmail Sender Screener - Options Page Styles
+   Gmail Sender Screener - Options Page Styles (Screener Mode)
    ============================================================ */
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -66,6 +66,47 @@ h1 { font-size: 22px; font-weight: 600; color: #1a73e8; }
 }
 .dot-green { background: #1e8e3e; }
 .dot-red { background: #d93025; }
+
+/* ---- Form elements ---- */
+.form-group {
+  margin-bottom: 14px;
+}
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 4px;
+  color: #3c4043;
+}
+.input {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #202124;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input:focus {
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.15);
+}
+code {
+  background: #f1f3f4;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.save-status {
+  font-size: 12px;
+  margin-left: 8px;
+}
+.save-ok { color: #1e8e3e; }
+.save-err { color: #d93025; }
 
 /* ---- Sender list ---- */
 .sender-list { max-height: 400px; overflow-y: auto; }

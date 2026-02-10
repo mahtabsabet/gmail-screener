@@ -9,7 +9,7 @@
   <div class="container">
     <header>
       <h1>Gmail Sender Screener</h1>
-      <p class="subtitle">Manage your screened-out senders. Data lives in your Gmail filters &mdash; nothing stored locally.</p>
+      <p class="subtitle">Opt-in screener mode for Gmail. Data lives in your Gmail filters &mdash; nothing stored locally.</p>
     </header>
 
     <!-- Auth -->
@@ -21,12 +21,41 @@
       </button>
     </section>
 
+    <!-- Settings -->
+    <section class="card" id="settings-card" style="display:none;">
+      <h2>Screener Settings</h2>
+      <div class="form-group">
+        <label for="filter-query">Default routing filter query</label>
+        <input type="text" id="filter-query" class="input" placeholder="-is:chat">
+        <p class="hint">Gmail search query for the catch-most filter. Default: <code>-is:chat</code></p>
+      </div>
+      <div class="form-group">
+        <label for="sweep-cap">Sweep cap (max messages per sweep)</label>
+        <input type="number" id="sweep-cap" class="input" min="10" max="1000" step="10" placeholder="200">
+        <p class="hint">Maximum messages moved in a single sweep operation. Default: 200</p>
+      </div>
+      <button id="save-settings-btn" class="btn btn-primary btn-sm">Save settings</button>
+      <span id="save-status" class="save-status"></span>
+    </section>
+
+    <!-- Allowed senders -->
+    <section class="card" id="allowed-card" style="display:none;">
+      <h2>Allowed senders <span class="count" id="allowed-count">0</span></h2>
+      <p class="hint">
+        These senders have a Gmail filter that bypasses the Screener and delivers directly to your inbox.
+        Removing a sender here deletes their allow filter.
+      </p>
+      <div id="allowed-list" class="sender-list">
+        <div class="empty-state">Loading&hellip;</div>
+      </div>
+    </section>
+
     <!-- Screened-out senders -->
-    <section class="card">
+    <section class="card" id="screenout-card" style="display:none;">
       <h2>Screened-out senders <span class="count" id="blocked-count">0</span></h2>
       <p class="hint">
-        These senders have a Gmail filter that skips your inbox and applies the
-        Screenout label. Removing a sender here deletes their Gmail filter.
+        These senders have a Gmail filter that routes mail to the Screenout label.
+        Removing a sender here deletes their screenout filter and moves mail to inbox.
       </p>
       <div id="blocked-list" class="sender-list">
         <div class="empty-state">Loading&hellip;</div>

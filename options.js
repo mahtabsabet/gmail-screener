@@ -1,11 +1,20 @@
-// options.js - Options page logic
+// options.js - Options page logic (Screener Mode)
 'use strict';
 
 document.addEventListener('DOMContentLoaded', () => {
   const authStatusEl = document.getElementById('auth-status');
   const signInBtn = document.getElementById('sign-in-btn');
+  const settingsCard = document.getElementById('settings-card');
+  const allowedCard = document.getElementById('allowed-card');
+  const screenoutCard = document.getElementById('screenout-card');
+  const allowedListEl = document.getElementById('allowed-list');
+  const allowedCountEl = document.getElementById('allowed-count');
   const blockedListEl = document.getElementById('blocked-list');
   const blockedCountEl = document.getElementById('blocked-count');
+  const filterQueryInput = document.getElementById('filter-query');
+  const sweepCapInput = document.getElementById('sweep-cap');
+  const saveSettingsBtn = document.getElementById('save-settings-btn');
+  const saveStatusEl = document.getElementById('save-status');
 
   // ---- Auth ----
   async function checkAuth() {
@@ -33,7 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const resp = await chrome.runtime.sendMessage({ type: 'SIGN_IN' });
       if (resp && resp.success) {
         await checkAuth();
-        await loadList();
+        showSettings();
+        await loadAllLists();
       } else {
         authStatusEl.innerHTML =
           '<span class="dot dot-red"></span> Sign-in failed';
@@ -46,29 +56,76 @@ document.addEventListener('DOMContentLoaded', () => {
     signInBtn.textContent = 'Sign in with Google';
   });
 
-  // ---- Render screened-out list (from Gmail filters) ----
-  async function loadList() {
+  // ---- Settings ----
+  async function loadSettings() {
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: 'GET_STATUS' });
+      if (resp) {
+        filterQueryInput.value = resp.filterQuery || '-is:chat';
+        sweepCapInput.value = resp.sweepCap || 200;
+      }
+    } catch (err) {
+      console.warn('[Gmail Screener] Load settings failed:', err);
+    }
+  }
+
+  saveSettingsBtn.addEventListener('click', async () => {
+    saveSettingsBtn.disabled = true;
+    try {
+      await chrome.runtime.sendMessage({
+        type: 'UPDATE_SETTINGS',
+        filterQuery: filterQueryInput.value.trim(),
+        sweepCap: parseInt(sweepCapInput.value, 10) || 200,
+      });
+      saveStatusEl.textContent = 'Saved!';
+      saveStatusEl.className = 'save-status save-ok';
+      setTimeout(() => { saveStatusEl.textContent = ''; }, 2000);
+    } catch (err) {
+      saveStatusEl.textContent = 'Error saving';
+      saveStatusEl.className = 'save-status save-err';
+    }
+    saveSettingsBtn.disabled = false;
+  });
+
+  // ---- Allowed senders list ----
+  async function loadAllowedList() {
+    allowedListEl.innerHTML = '<div class="empty-state">Loading&hellip;</div>';
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: 'GET_ALLOWED' });
+      const emails = resp && resp.emails ? resp.emails : [];
+      renderList(allowedListEl, allowedCountEl, emails, 'allowed');
+    } catch (err) {
+      allowedListEl.innerHTML = '';
+      const errDiv = document.createElement('div');
+      errDiv.className = 'empty-state';
+      errDiv.textContent = 'Failed to load: ' + err.message;
+      allowedListEl.appendChild(errDiv);
+    }
+  }
+
+  // ---- Screened-out senders list ----
+  async function loadBlockedList() {
     blockedListEl.innerHTML = '<div class="empty-state">Loading&hellip;</div>';
     try {
       const resp = await chrome.runtime.sendMessage({ type: 'GET_SCREENED_OUT' });
       const emails = resp && resp.emails ? resp.emails : [];
-      renderList(emails);
+      renderList(blockedListEl, blockedCountEl, emails, 'screenout');
     } catch (err) {
+      blockedListEl.innerHTML = '';
       const errDiv = document.createElement('div');
       errDiv.className = 'empty-state';
       errDiv.textContent = 'Failed to load: ' + err.message;
-      blockedListEl.innerHTML = '';
       blockedListEl.appendChild(errDiv);
     }
   }
 
-  function renderList(emails) {
-    blockedListEl.innerHTML = '';
-    blockedCountEl.textContent = emails.length;
+  function renderList(container, countEl, emails, listType) {
+    container.innerHTML = '';
+    countEl.textContent = emails.length;
 
     if (emails.length === 0) {
-      blockedListEl.innerHTML =
-        '<div class="empty-state">No screened-out senders.</div>';
+      container.innerHTML =
+        '<div class="empty-state">No ' + (listType === 'allowed' ? 'allowed' : 'screened-out') + ' senders.</div>';
       return;
     }
 
@@ -86,22 +143,19 @@ document.addEventListener('DOMContentLoaded', () => {
       removeBtn.className = 'btn btn-sm btn-remove';
       removeBtn.textContent = 'Remove filter';
       removeBtn.title = `Delete the Gmail filter for ${email}`;
-      removeBtn.addEventListener('click', () => removeSender(email));
+      removeBtn.addEventListener('click', () => removeSender(email, listType));
       row.appendChild(removeBtn);
 
-      blockedListEl.appendChild(row);
+      container.appendChild(row);
     }
   }
 
-  async function removeSender(email) {
+  async function removeSender(email, listType) {
+    const msgType = listType === 'allowed' ? 'REMOVE_ALLOWED' : 'REMOVE_SCREENED_OUT';
     try {
-      const resp = await chrome.runtime.sendMessage({
-        type: 'REMOVE_SCREENED_OUT',
-        email,
-      });
+      const resp = await chrome.runtime.sendMessage({ type: msgType, email });
       if (resp && resp.success) {
-        await loadList();
-        // Reload Gmail tabs so moved messages appear in inbox
+        await loadAllLists();
         const gmailTabs = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
         for (const tab of gmailTabs) chrome.tabs.reload(tab.id);
       } else {
@@ -112,12 +166,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  async function loadAllLists() {
+    await Promise.all([loadAllowedList(), loadBlockedList()]);
+  }
+
+  function showSettings() {
+    settingsCard.style.display = 'block';
+    allowedCard.style.display = 'block';
+    screenoutCard.style.display = 'block';
+  }
+
   // ---- Init ----
   checkAuth().then((authed) => {
-    if (authed) loadList();
-    else {
+    if (authed) {
+      showSettings();
+      loadSettings();
+      loadAllLists();
+    } else {
+      allowedListEl.innerHTML =
+        '<div class="empty-state">Sign in to view.</div>';
       blockedListEl.innerHTML =
-        '<div class="empty-state">Sign in to view screened-out senders.</div>';
+        '<div class="empty-state">Sign in to view.</div>';
     }
   });
 });

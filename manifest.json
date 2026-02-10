@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Gmail Sender Screener",
   "version": "1.0.0",
-  "description": "Hey-style sender screening for Gmail. Screen out senders from your inbox — screen them back in from the Screenout folder.",
+  "description": "Opt-in screener mode for Gmail. Routes inbound mail to a Screener label for triage — Allow, Screen Out, or Set Aside senders.",
   "permissions": [
     "identity",
     "storage",
