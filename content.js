@@ -160,8 +160,8 @@
     const isScreenout = view === 'screenout';
     const headerLabel = isScreenout ? 'SCREEN IN' : 'SCREEN OUT';
     const headerIcon = isScreenout ? ICON_CHECK : ICON_BLOCK;
-    const senderAction = isScreenout ? 'Unblock sender' : 'Block sender';
-    const domainAction = isScreenout ? 'Unblock domain' : 'Block domain';
+    const senderAction = isScreenout ? 'Screen in sender' : 'Screen out sender';
+    const domainAction = isScreenout ? 'Screen in domain' : 'Screen out domain';
 
     const dropdown = document.createElement('div');
     dropdown.className = 'gs-dropdown';
@@ -503,6 +503,7 @@
           try {
             await chrome.runtime.sendMessage({ type: 'REMOVE_SCREENED_OUT', email });
             await refreshPanelList();
+            location.reload();
           } catch (err) {
             console.warn('[Gmail Screener] Remove sender failed:', err);
             removeBtn.disabled = false;

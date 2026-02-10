@@ -289,6 +289,8 @@ async function handleMessage(msg) {
       const target = (msg.email || '').toLowerCase();
       const filter = await findFilterForSender(target);
       if (filter) await deleteFilter(filter.id);
+      const labelId = await getScreenoutLabelId();
+      if (labelId) await moveScreenoutMessagesToInbox(target, labelId);
       return { success: true };
     }
 

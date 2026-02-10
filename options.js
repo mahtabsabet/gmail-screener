@@ -101,6 +101,9 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       if (resp && resp.success) {
         await loadList();
+        // Reload Gmail tabs so moved messages appear in inbox
+        const gmailTabs = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
+        for (const tab of gmailTabs) chrome.tabs.reload(tab.id);
       } else {
         alert('Failed to remove: ' + (resp?.error || 'Unknown error'));
       }

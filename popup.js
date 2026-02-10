@@ -64,6 +64,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       if (resp && resp.success) {
         await loadList();
+        // Reload Gmail tabs so moved messages appear in inbox
+        const gmailTabs = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
+        for (const tab of gmailTabs) chrome.tabs.reload(tab.id);
       }
     } catch (err) {
       console.warn('[Gmail Screener] Remove sender failed:', err);
