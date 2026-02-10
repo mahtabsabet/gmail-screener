@@ -13,7 +13,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const sweepCheckbox = document.getElementById('sweep-checkbox');
   const sweepText = document.getElementById('sweep-text');
   const openScreener = document.getElementById('open-screener');
-  const openScreenout = document.getElementById('open-screenout');
   const openSetAside = document.getElementById('open-setaside');
   const openOptionsLink = document.getElementById('open-options');
   const reauthBtn = document.getElementById('reauth-btn');
@@ -191,11 +190,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   openScreener.addEventListener('click', (e) => {
     e.preventDefault();
     openGmailLabel('#label/Screener');
-  });
-
-  openScreenout.addEventListener('click', (e) => {
-    e.preventDefault();
-    openGmailLabel('#label/Screenout');
   });
 
   openSetAside.addEventListener('click', (e) => {
