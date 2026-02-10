@@ -3,7 +3,6 @@
 (function () {
   'use strict';
 
-  let processedRows = new WeakSet(); // only used to avoid redundant extractSenderEmail calls
   let observer = null;
   let debounceTimer = null;
   let authenticated = false;
@@ -183,9 +182,9 @@
       e.stopImmediatePropagation();
       closeActiveDropdown();
       if (isScreenout) {
-        handleScreenIn(email, row, email);
+        handleScreenIn(email, row);
       } else {
-        handleScreenOut(email, row, email);
+        handleScreenOut(email, row);
       }
     });
     dropdown.appendChild(senderItem);
@@ -208,9 +207,9 @@
         e.stopImmediatePropagation();
         closeActiveDropdown();
         if (isScreenout) {
-          handleScreenIn('@' + domain, row, email);
+          handleScreenIn('@' + domain, row);
         } else {
-          handleScreenOut('@' + domain, row, email);
+          handleScreenOut('@' + domain, row);
         }
       });
       dropdown.appendChild(domainItem);
@@ -266,7 +265,7 @@
     }
   }
 
-  async function handleScreenOut(target, row, rowEmail) {
+  async function handleScreenOut(target, row) {
     if (!(await ensureAuth())) return;
 
     const btns = row.querySelectorAll('.gs-trigger-btn');
@@ -292,7 +291,7 @@
     }
   }
 
-  async function handleScreenIn(target, row, rowEmail) {
+  async function handleScreenIn(target, row) {
     if (!(await ensureAuth())) return;
 
     const btns = row.querySelectorAll('.gs-trigger-btn');
@@ -331,12 +330,6 @@
     } catch (err) {
       showToast(`Undo error: ${err.message}`, 'error');
     }
-  }
-
-  function resetButton(btn, label) {
-    if (!btn) return;
-    btn.disabled = false;
-    btn.textContent = label;
   }
 
   // ============================================================

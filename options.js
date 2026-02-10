@@ -52,8 +52,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const emails = resp && resp.emails ? resp.emails : [];
       renderList(emails);
     } catch (err) {
-      blockedListEl.innerHTML =
-        '<div class="empty-state">Failed to load: ' + err.message + '</div>';
+      const errDiv = document.createElement('div');
+      errDiv.className = 'empty-state';
+      errDiv.textContent = 'Failed to load: ' + err.message;
+      blockedListEl.innerHTML = '';
+      blockedListEl.appendChild(errDiv);
     }
   }
 

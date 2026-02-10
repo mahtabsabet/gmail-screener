@@ -3,6 +3,7 @@
 
 const GMAIL_API_BASE = 'https://www.googleapis.com/gmail/v1/users/me';
 const DEFAULT_LABEL_NAME = 'Screenout';
+let ensureLabelPromise = null;
 
 // ============================================================
 // OAuth
@@ -91,6 +92,14 @@ async function getScreenoutLabelId() {
 }
 
 async function ensureScreenoutLabel() {
+  if (ensureLabelPromise) return ensureLabelPromise;
+  ensureLabelPromise = _ensureScreenoutLabel().finally(() => {
+    ensureLabelPromise = null;
+  });
+  return ensureLabelPromise;
+}
+
+async function _ensureScreenoutLabel() {
   const cached = await getScreenoutLabelId();
   if (cached) return cached;
 
@@ -173,9 +182,10 @@ async function deleteFilter(filterId) {
 // ============================================================
 
 async function moveInboxMessagesToScreenout(email, labelId) {
+  // TODO: paginate using nextPageToken if a sender has >1000 inbox messages
   const query = `from:${email} in:inbox`;
   const result = await gmailFetch(
-    `/messages?q=${encodeURIComponent(query)}&maxResults=500`
+    `/messages?q=${encodeURIComponent(query)}&maxResults=1000`
   );
   if (!result.messages || result.messages.length === 0) return [];
 
@@ -192,9 +202,10 @@ async function moveInboxMessagesToScreenout(email, labelId) {
 }
 
 async function moveScreenoutMessagesToInbox(email, labelId) {
+  // TODO: paginate using nextPageToken if a sender has >1000 Screenout messages
   const query = `from:${email} label:${DEFAULT_LABEL_NAME}`;
   const result = await gmailFetch(
-    `/messages?q=${encodeURIComponent(query)}&maxResults=500`
+    `/messages?q=${encodeURIComponent(query)}&maxResults=1000`
   );
   if (!result.messages || result.messages.length === 0) return [];
 
