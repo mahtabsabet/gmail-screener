@@ -5,7 +5,7 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      width: 320px;
+      width: 340px;
       font-family: 'Segoe UI', Roboto, Arial, sans-serif;
       font-size: 13px;
       color: #202124;
@@ -20,116 +20,123 @@
       gap: 8px;
     }
     h1 img { width: 20px; height: 20px; }
-    .stats {
-      display: flex;
-      gap: 16px;
-      margin-bottom: 14px;
-    }
-    .stat {
-      flex: 1;
-      text-align: center;
-      padding: 10px 8px;
-      background: #f8f9fa;
-      border-radius: 8px;
-    }
-    .stat-number {
-      font-size: 22px;
-      font-weight: 700;
-      color: #1a73e8;
-      line-height: 1.2;
-    }
-    .stat-label {
-      font-size: 11px;
-      color: #5f6368;
-      margin-top: 2px;
-    }
-    .stat.blocked .stat-number { color: #c5221f; }
-
-    #auth-section {
-      padding: 10px 0;
-      border-top: 1px solid #e8eaed;
-    }
-    #auth-status {
-      font-size: 12px;
-      color: #5f6368;
-      margin-bottom: 8px;
-    }
+    #auth-section { padding: 8px 0; }
+    #auth-status { font-size: 12px; color: #5f6368; margin-bottom: 8px; }
     .dot {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      margin-right: 4px;
-      vertical-align: middle;
+      display: inline-block; width: 8px; height: 8px;
+      border-radius: 50%; margin-right: 4px; vertical-align: middle;
     }
     .dot-green { background: #1e8e3e; }
     .dot-red { background: #d93025; }
-
     .btn {
-      display: block;
-      width: 100%;
-      padding: 8px;
-      border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      text-align: center;
-      margin-top: 6px;
-      transition: background 0.15s;
+      display: block; width: 100%; padding: 8px; border: none;
+      border-radius: 6px; font-size: 13px; font-weight: 500;
+      cursor: pointer; text-align: center; margin-top: 6px;
       font-family: inherit;
     }
-    .btn-primary {
-      background: #1a73e8;
-      color: #fff;
-    }
+    .btn-primary { background: #1a73e8; color: #fff; }
     .btn-primary:hover { background: #1765cc; }
-    .btn-secondary {
-      background: #f1f3f4;
-      color: #3c4043;
-    }
-    .btn-secondary:hover { background: #e8eaed; }
-
     #sign-in-btn { display: none; }
-    .link-row {
-      margin-top: 10px;
+
+    /* Sender list */
+    .list-header {
+      font-size: 13px;
+      font-weight: 600;
+      margin-top: 12px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .count {
+      display: inline-block;
+      min-width: 18px;
+      padding: 0 5px;
+      background: #fce8e6;
+      border-radius: 9px;
+      font-size: 11px;
+      font-weight: 600;
+      text-align: center;
+      color: #c5221f;
+      line-height: 18px;
+    }
+    #sender-list {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .sender-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 10px;
+      border-bottom: 1px solid #f1f3f4;
+    }
+    .sender-row:last-child { border-bottom: none; }
+    .sender-email {
+      font-size: 12px;
+      color: #202124;
+      word-break: break-all;
+      flex: 1;
+      margin-right: 8px;
+    }
+    .sender-domain { color: #5f6368; }
+    .btn-remove {
+      background: none;
+      border: none;
+      color: #5f6368;
+      cursor: pointer;
+      font-size: 15px;
+      padding: 2px 4px;
+      border-radius: 4px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .btn-remove:hover { background: #fce8e6; color: #c5221f; }
+    .empty-state {
+      color: #9aa0a6;
+      font-size: 12px;
+      padding: 16px;
       text-align: center;
     }
-    .link-row a {
-      font-size: 12px;
-      color: #1a73e8;
-      text-decoration: none;
-      cursor: pointer;
+
+    /* Footer links */
+    .links {
+      margin-top: 10px;
+      display: flex;
+      justify-content: center;
+      gap: 14px;
     }
-    .link-row a:hover { text-decoration: underline; }
+    .links a {
+      font-size: 11px; color: #1a73e8;
+      text-decoration: none; cursor: pointer;
+    }
+    .links a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <h1>
     <img src="icons/icon48.png" alt="">
-    Gmail Sender Screener
+    Sender Screener
   </h1>
-
-  <div class="stats">
-    <div class="stat">
-      <div class="stat-number" id="allowed-count">-</div>
-      <div class="stat-label">Allowed</div>
-    </div>
-    <div class="stat blocked">
-      <div class="stat-number" id="blocked-count">-</div>
-      <div class="stat-label">Screened out</div>
-    </div>
-  </div>
 
   <div id="auth-section">
     <div id="auth-status">Checking&hellip;</div>
     <button id="sign-in-btn" class="btn btn-primary">Sign in with Google</button>
   </div>
 
-  <button id="options-btn" class="btn btn-secondary">Manage senders</button>
+  <div class="list-header">
+    Screened out <span class="count" id="blocked-count">0</span>
+  </div>
+  <div id="sender-list">
+    <div class="empty-state">Loading&hellip;</div>
+  </div>
 
-  <div class="link-row">
-    <a id="open-gmail">Open Gmail</a>
+  <div class="links">
+    <a id="open-screenout">Screenout folder</a>
+    <a id="open-options">Full settings</a>
   </div>
 
   <script src="popup.js"></script>

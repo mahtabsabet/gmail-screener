@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Gmail Sender Screener",
   "version": "1.0.0",
-  "description": "Hey-style sender screening for Gmail. Screen out unknown senders directly from your inbox without opening emails.",
+  "description": "Hey-style sender screening for Gmail. Screen out senders from your inbox — screen them back in from the Screenout folder.",
   "permissions": [
     "identity",
     "storage"
@@ -12,7 +12,7 @@
     "https://www.googleapis.com/*"
   ],
   "oauth2": {
-    "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
+    "client_id": "132921999433-g9m2loilvs9fmir1n3oatlitrfknra2h.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/gmail.modify",
       "https://www.googleapis.com/auth/gmail.settings.basic"

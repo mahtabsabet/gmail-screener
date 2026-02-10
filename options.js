@@ -5,10 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const authStatusEl = document.getElementById('auth-status');
   const signInBtn = document.getElementById('sign-in-btn');
   const blockedListEl = document.getElementById('blocked-list');
-  const allowedListEl = document.getElementById('allowed-list');
   const blockedCountEl = document.getElementById('blocked-count');
-  const allowedCountEl = document.getElementById('allowed-count');
-  const resetBtn = document.getElementById('reset-btn');
 
   // ---- Auth ----
   async function checkAuth() {
@@ -18,16 +15,13 @@ document.addEventListener('DOMContentLoaded', () => {
         authStatusEl.innerHTML =
           '<span class="dot dot-green"></span> Connected to Gmail';
         signInBtn.style.display = 'none';
-      } else {
-        authStatusEl.innerHTML =
-          '<span class="dot dot-red"></span> Not connected to Gmail';
-        signInBtn.style.display = 'inline-block';
+        return true;
       }
-    } catch (_) {
-      authStatusEl.innerHTML =
-        '<span class="dot dot-red"></span> Unable to check connection';
-      signInBtn.style.display = 'inline-block';
-    }
+    } catch (_) {}
+    authStatusEl.innerHTML =
+      '<span class="dot dot-red"></span> Not connected to Gmail';
+    signInBtn.style.display = 'inline-block';
+    return false;
   }
 
   signInBtn.addEventListener('click', async () => {
@@ -37,10 +31,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const resp = await chrome.runtime.sendMessage({ type: 'SIGN_IN' });
       if (resp && resp.success) {
         await checkAuth();
+        await loadList();
       } else {
         authStatusEl.innerHTML =
-          '<span class="dot dot-red"></span> Sign-in failed: ' +
-          (resp?.error || 'Unknown error');
+          '<span class="dot dot-red"></span> Sign-in failed';
       }
     } catch (err) {
       authStatusEl.innerHTML =
@@ -50,20 +44,26 @@ document.addEventListener('DOMContentLoaded', () => {
     signInBtn.textContent = 'Sign in with Google';
   });
 
-  // ---- Render sender lists ----
-  function renderList(container, emails, type) {
-    container.innerHTML = '';
-    const countEl = type === 'blocked' ? blockedCountEl : allowedCountEl;
-    countEl.textContent = emails.length;
+  // ---- Render screened-out list (from Gmail filters) ----
+  async function loadList() {
+    blockedListEl.innerHTML = '<div class="empty-state">Loading&hellip;</div>';
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: 'GET_SCREENED_OUT' });
+      const emails = resp && resp.emails ? resp.emails : [];
+      renderList(emails);
+    } catch (err) {
+      blockedListEl.innerHTML =
+        '<div class="empty-state">Failed to load: ' + err.message + '</div>';
+    }
+  }
+
+  function renderList(emails) {
+    blockedListEl.innerHTML = '';
+    blockedCountEl.textContent = emails.length;
 
     if (emails.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'empty-state';
-      empty.textContent =
-        type === 'blocked'
-          ? 'No screened-out senders yet.'
-          : 'No allowed senders yet.';
-      container.appendChild(empty);
+      blockedListEl.innerHTML =
+        '<div class="empty-state">No screened-out senders.</div>';
       return;
     }
 
@@ -79,67 +79,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const removeBtn = document.createElement('button');
       removeBtn.className = 'btn btn-sm btn-remove';
-      removeBtn.textContent = 'Remove';
-      removeBtn.title = `Remove ${email}`;
-      removeBtn.addEventListener('click', () => removeSender(email, type));
+      removeBtn.textContent = 'Remove filter';
+      removeBtn.title = `Delete the Gmail filter for ${email}`;
+      removeBtn.addEventListener('click', () => removeSender(email));
       row.appendChild(removeBtn);
 
-      container.appendChild(row);
+      blockedListEl.appendChild(row);
     }
   }
 
-  async function loadLists() {
-    const data = await chrome.storage.sync.get([
-      'allowedEmails',
-      'blockedEmails',
-    ]);
-    renderList(blockedListEl, data.blockedEmails || [], 'blocked');
-    renderList(allowedListEl, data.allowedEmails || [], 'allowed');
-  }
-
-  async function removeSender(email, type) {
-    const msgType = type === 'blocked' ? 'REMOVE_BLOCKED' : 'REMOVE_ALLOWED';
+  async function removeSender(email) {
     try {
-      const resp = await chrome.runtime.sendMessage({ type: msgType, email });
+      const resp = await chrome.runtime.sendMessage({
+        type: 'REMOVE_SCREENED_OUT',
+        email,
+      });
       if (resp && resp.success) {
-        await loadLists();
+        await loadList();
       } else {
-        alert('Failed to remove sender: ' + (resp?.error || 'Unknown error'));
+        alert('Failed to remove: ' + (resp?.error || 'Unknown error'));
       }
     } catch (err) {
       alert('Error: ' + err.message);
     }
   }
 
-  // ---- Reset ----
-  resetBtn.addEventListener('click', async () => {
-    if (
-      !confirm(
-        'This will clear all allowed and screened-out sender data from this extension.\n\n' +
-          'Gmail filters already created will NOT be removed.\n\n' +
-          'Continue?'
-      )
-    ) {
-      return;
-    }
-    await chrome.storage.sync.set({
-      allowedEmails: [],
-      blockedEmails: [],
-    });
-    await chrome.storage.local.set({ filterMap: {} });
-    await loadLists();
-  });
-
-  // ---- Watch for external changes ----
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'sync') {
-      if (changes.allowedEmails || changes.blockedEmails) {
-        loadLists();
-      }
-    }
-  });
-
   // ---- Init ----
-  checkAuth();
-  loadLists();
+  checkAuth().then((authed) => {
+    if (authed) loadList();
+    else {
+      blockedListEl.innerHTML =
+        '<div class="empty-state">Sign in to view screened-out senders.</div>';
+    }
+  });
 });

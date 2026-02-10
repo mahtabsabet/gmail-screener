@@ -2,38 +2,94 @@
 'use strict';
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const allowedCountEl = document.getElementById('allowed-count');
   const blockedCountEl = document.getElementById('blocked-count');
   const authStatusEl = document.getElementById('auth-status');
   const signInBtn = document.getElementById('sign-in-btn');
-  const optionsBtn = document.getElementById('options-btn');
-  const openGmailLink = document.getElementById('open-gmail');
+  const senderListEl = document.getElementById('sender-list');
+  const openScreenoutLink = document.getElementById('open-screenout');
+  const openOptionsLink = document.getElementById('open-options');
 
-  // Load stats
-  chrome.storage.sync.get(['allowedEmails', 'blockedEmails'], (data) => {
-    allowedCountEl.textContent = (data.allowedEmails || []).length;
-    blockedCountEl.textContent = (data.blockedEmails || []).length;
-  });
+  // ---- Render sender list ----
+  function renderList(emails) {
+    senderListEl.innerHTML = '';
+    blockedCountEl.textContent = emails.length;
 
-  // Check auth
+    if (emails.length === 0) {
+      senderListEl.innerHTML =
+        '<div class="empty-state">No screened-out senders yet.</div>';
+      return;
+    }
+
+    const sorted = [...emails].sort();
+    for (const email of sorted) {
+      const row = document.createElement('div');
+      row.className = 'sender-row';
+
+      const label = document.createElement('span');
+      label.className = 'sender-email';
+      if (email.startsWith('@')) {
+        label.classList.add('sender-domain');
+      }
+      label.textContent = email;
+      row.appendChild(label);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'btn-remove';
+      removeBtn.textContent = '\u00d7';
+      removeBtn.title = `Remove filter for ${email}`;
+      removeBtn.addEventListener('click', () => removeSender(email));
+      row.appendChild(removeBtn);
+
+      senderListEl.appendChild(row);
+    }
+  }
+
+  async function loadList() {
+    senderListEl.innerHTML = '<div class="empty-state">Loading\u2026</div>';
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: 'GET_SCREENED_OUT' });
+      const emails = resp && resp.emails ? resp.emails : [];
+      renderList(emails);
+    } catch (err) {
+      senderListEl.innerHTML =
+        '<div class="empty-state">Failed to load.</div>';
+    }
+  }
+
+  async function removeSender(email) {
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        type: 'REMOVE_SCREENED_OUT',
+        email,
+      });
+      if (resp && resp.success) {
+        await loadList();
+      }
+    } catch (_) {}
+  }
+
+  // ---- Auth ----
   try {
-    const resp = await chrome.runtime.sendMessage({ type: 'GET_AUTH_STATUS' });
-    if (resp && resp.authenticated) {
+    const authResp = await chrome.runtime.sendMessage({ type: 'GET_AUTH_STATUS' });
+    if (authResp && authResp.authenticated) {
       authStatusEl.innerHTML =
         '<span class="dot dot-green"></span> Connected to Gmail';
-      signInBtn.style.display = 'none';
+      await loadList();
     } else {
       authStatusEl.innerHTML =
         '<span class="dot dot-red"></span> Not connected';
       signInBtn.style.display = 'block';
+      senderListEl.innerHTML =
+        '<div class="empty-state">Sign in to view screened-out senders.</div>';
     }
   } catch (_) {
     authStatusEl.innerHTML =
       '<span class="dot dot-red"></span> Not connected';
     signInBtn.style.display = 'block';
+    senderListEl.innerHTML =
+      '<div class="empty-state">Sign in to view screened-out senders.</div>';
   }
 
-  // Sign in
   signInBtn.addEventListener('click', async () => {
     signInBtn.disabled = true;
     signInBtn.textContent = 'Signing in\u2026';
@@ -43,6 +99,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         authStatusEl.innerHTML =
           '<span class="dot dot-green"></span> Connected to Gmail';
         signInBtn.style.display = 'none';
+        await loadList();
       } else {
         authStatusEl.innerHTML =
           '<span class="dot dot-red"></span> Sign-in failed';
@@ -51,20 +108,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     } catch (err) {
       authStatusEl.innerHTML =
-        '<span class="dot dot-red"></span> Error: ' + err.message;
+        '<span class="dot dot-red"></span> Error';
       signInBtn.disabled = false;
       signInBtn.textContent = 'Sign in with Google';
     }
   });
 
-  // Options
-  optionsBtn.addEventListener('click', () => {
-    chrome.runtime.openOptionsPage();
+  // ---- Links ----
+  openScreenoutLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    chrome.tabs.create({ url: 'https://mail.google.com/mail/u/0/#label/Screenout' });
   });
 
-  // Open Gmail
-  openGmailLink.addEventListener('click', (e) => {
+  openOptionsLink.addEventListener('click', (e) => {
     e.preventDefault();
-    chrome.tabs.create({ url: 'https://mail.google.com' });
+    chrome.runtime.openOptionsPage();
   });
 });

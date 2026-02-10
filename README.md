@@ -1,123 +1,111 @@
 # Gmail Sender Screener
 
-A Chrome extension that adds **Hey-style sender screening** directly into the Gmail inbox. Screen out unknown senders without opening their emails. Screened-out emails are routed to a "Screenout" label via real Gmail filters, so screening works on **all devices** including mobile.
+A Chrome extension that adds **Hey-style sender screening** directly into Gmail. Hover over any inbox row to **screen out** a sender. Hover over any row in the Screenout folder to **screen them back in**.
 
-## Features
-
-- **Inline screening UI** — "New sender" badge appears on inbox rows for unknown senders
-- **One-click actions** — Allow or Screen out directly from the inbox list
-- **Gmail filters** — Screening creates real Gmail filters so future emails are auto-routed everywhere
-- **Undo support** — Snackbar with Undo after screening out a sender
-- **Options page** — View and manage all allowed/screened-out senders
-- **No email content stored** — Only sender email addresses are stored locally
+All decisions are stored as **Gmail filters** — no local database, and screening works on **all devices** including mobile.
 
 ## How it works
 
-1. The content script scans Gmail inbox rows and extracts sender emails from the DOM
-2. Unknown senders get a "New sender" badge with Allow / Screen out buttons
-3. **Allow** — Saves the sender locally; the badge disappears
-4. **Screen out** —
-   - Creates a `Screenout` Gmail label (if it doesn't exist)
-   - Creates a Gmail filter: `from:sender@example.com` → skip inbox + apply Screenout label
-   - Moves current messages from that sender out of inbox
+1. **In your inbox**: hover over any email row to reveal a **"Screen out"** button
+2. Clicking it:
+   - Creates a Gmail filter for that sender (skip inbox + apply Screenout label)
+   - Moves their existing inbox messages to Screenout
    - The filter ensures future emails are screened on **all devices**
+3. **In the Screenout folder** (`#label/Screenout`): hover to reveal a **"Screen in"** button
+4. Clicking it:
+   - Deletes the Gmail filter
+   - Moves their messages back to inbox
+5. **Undo** snackbar appears after screening out, in case you misclick
+
+## Data model
+
+There is no local sender database. Gmail filters **are** the data:
+
+| Action | What happens |
+|---|---|
+| Screen out | Gmail filter created (`from:sender` → skip inbox + Screenout label) |
+| Screen in | Gmail filter deleted, messages moved back to inbox |
+
+The options page reads directly from Gmail's filter list.
 
 ## Setup
 
 ### 1. Create a Google Cloud project
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project (or select an existing one)
-3. Enable the **Gmail API**:
-   - Navigate to **APIs & Services → Library**
-   - Search for "Gmail API" and click **Enable**
+2. Create a new project (or select existing)
+3. Enable the **Gmail API** (APIs & Services → Library)
 
 ### 2. Create OAuth credentials
 
 1. Go to **APIs & Services → Credentials**
 2. Click **Create Credentials → OAuth client ID**
 3. Application type: **Chrome extension**
-4. Enter your extension ID (see step 3 below for how to get it)
-5. Copy the generated **Client ID**
+4. Enter your extension ID (see step 4)
+5. Copy the **Client ID**
 
 ### 3. Configure the extension
 
-1. Open `manifest.json`
-2. Replace `YOUR_CLIENT_ID.apps.googleusercontent.com` with your actual Client ID:
-   ```json
-   "oauth2": {
-     "client_id": "123456789-abcdef.apps.googleusercontent.com",
-     ...
-   }
-   ```
+Replace the placeholder in `manifest.json`:
+```json
+"oauth2": {
+  "client_id": "YOUR_ACTUAL_CLIENT_ID.apps.googleusercontent.com",
+  ...
+}
+```
 
-### 4. Load the extension in Chrome
+### 4. Load in Chrome
 
 1. Open `chrome://extensions/`
-2. Enable **Developer mode** (toggle in top-right)
-3. Click **Load unpacked** and select this project folder
-4. Note the **Extension ID** shown on the card — you'll need this for step 2 above
-5. If you haven't set the OAuth client ID yet, update `manifest.json` and click the reload button
+2. Enable **Developer mode**
+3. Click **Load unpacked**, select this folder
+4. Note the **Extension ID** — use it in step 2 if you haven't already
 
-### 5. Configure OAuth consent screen
+### 5. OAuth consent screen
 
-1. In Google Cloud Console, go to **APIs & Services → OAuth consent screen**
-2. Choose **External** user type
-3. Fill in the required fields (app name, support email, etc.)
-4. Add scopes:
-   - `https://www.googleapis.com/auth/gmail.modify`
-   - `https://www.googleapis.com/auth/gmail.settings.basic`
-5. Add your Google account as a test user (under **Test users**)
-6. Save
+1. Google Cloud Console → **APIs & Services → OAuth consent screen**
+2. Choose **External**, fill required fields
+3. Add scopes: `gmail.modify`, `gmail.settings.basic`
+4. Add your account as a test user
 
-### 6. Start using
+### 6. Use it
 
 1. Open [Gmail](https://mail.google.com)
-2. The extension will prompt you to sign in on first use
-3. Unknown senders will show a "New sender" badge in your inbox
-4. Click **Allow** or **Screen out** to make your decision
+2. Sign in when prompted by the extension
+3. Hover over inbox rows → **Screen out**
+4. Visit Screenout folder → hover → **Screen in**
 
-## Extension architecture
+## Architecture
 
 ```
-├── manifest.json         # Chrome extension manifest (V3)
-├── background.js         # Service worker: OAuth, Gmail API, storage
-├── content.js            # Content script: Gmail DOM observation + UI
-├── content.css           # Styles for injected inbox UI
-├── popup.html/js         # Browser action popup (stats + sign-in)
-├── options.html/js/css   # Options page (manage senders)
-└── icons/                # Extension icons
+├── manifest.json       # MV3 manifest with OAuth2
+├── background.js       # Service worker: Gmail API (filters, labels, messages)
+├── content.js          # Content script: DOM observation, button injection
+├── content.css         # Hover-to-reveal button styles, toast
+├── popup.html/js       # Toolbar popup (count + sign-in)
+├── options.html/js/css # Options page (list/remove screened-out senders)
+└── icons/              # Extension icons
 ```
 
 ### Permissions
 
 | Permission | Why |
 |---|---|
-| `identity` | OAuth sign-in via `chrome.identity.getAuthToken()` |
-| `storage` | Store allowed/blocked sender lists via `chrome.storage.sync` |
-| `https://mail.google.com/*` | Content script injection into Gmail |
-| `https://www.googleapis.com/*` | Gmail API calls for labels, filters, and message modification |
+| `identity` | OAuth via `chrome.identity.getAuthToken()` |
+| `storage` | Cache Screenout label ID locally |
+| `mail.google.com` | Content script injection |
+| `googleapis.com` | Gmail API calls |
 
 ### Gmail API scopes
 
 | Scope | Why |
 |---|---|
-| `gmail.modify` | Read message metadata, create/manage labels, modify labels on threads |
-| `gmail.settings.basic` | Create and delete Gmail filters |
+| `gmail.modify` | Create labels, modify message labels |
+| `gmail.settings.basic` | Create/delete Gmail filters |
 
 ## Privacy
 
-See [PRIVACY.md](PRIVACY.md) for the full privacy notice.
-
-**TL;DR:** The extension only stores sender email addresses locally. It never reads, stores, or transmits email bodies, attachments, or other message content. Gmail API access is used solely to create labels, filters, and move messages between labels.
-
-## Limitations
-
-- Works only on desktop Gmail (Chrome)
-- Mobile Gmail does not show the screening UI (but filters work everywhere)
-- Gmail's DOM structure may change, which could break sender extraction
-- `chrome.storage.sync` has size limits (~100KB total); extremely large sender lists may need migration to `chrome.storage.local`
-- OAuth setup requires a Google Cloud project
+See [PRIVACY.md](PRIVACY.md). TL;DR: no email content is read or stored. The only data is Gmail filters (which live in your Gmail account) and a cached label ID.
 
 ## License
 
