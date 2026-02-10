@@ -32,12 +32,37 @@ function removeCachedToken(token) {
   });
 }
 
+/** Force re-authorization: revoke current token and get a fresh one with current scopes */
+async function forceReauth() {
+  try {
+    const oldToken = await getAuthToken(false);
+    // Revoke the token on Google's side so we get fresh scopes
+    await fetch(`https://accounts.google.com/o/oauth2/revoke?token=${oldToken}`);
+    await removeCachedToken(oldToken);
+  } catch (_) {
+    // If we can't get the old token, that's fine - just clear everything
+    await new Promise((resolve) => {
+      chrome.identity.clearAllCachedAuthTokens(resolve);
+    });
+  }
+  // Now get a fresh token with interactive consent
+  return getAuthToken(true);
+}
+
 // ============================================================
 // Gmail API helpers
 // ============================================================
 
 async function gmailFetch(path, options = {}) {
-  let token = await getAuthToken(false);
+  let token;
+  try {
+    token = await getAuthToken(false);
+  } catch (authErr) {
+    // Non-interactive auth failed - try interactive (will prompt user)
+    console.warn('[Gmail Screener] Non-interactive auth failed, trying interactive:', authErr.message);
+    token = await getAuthToken(true);
+  }
+
   const url = path.startsWith('http')
     ? path
     : `${GMAIL_API_BASE}${path}`;
@@ -667,7 +692,7 @@ async function handleMessage(msg) {
 
     case 'SIGN_IN': {
       try {
-        await getAuthToken(true);
+        await forceReauth();
         return { success: true };
       } catch (err) {
         return { success: false, error: err.message };

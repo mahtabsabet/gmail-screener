@@ -110,17 +110,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       authStatusEl.innerHTML =
         '<span class="dot dot-green"></span> Connected to Gmail';
       screenerSection.style.display = 'block';
+      if (reauthBtn) reauthBtn.style.display = 'block';
       await loadStatus();
     } else {
       authStatusEl.innerHTML =
         '<span class="dot dot-red"></span> Not connected';
       signInBtn.style.display = 'block';
+      if (reauthBtn) reauthBtn.style.display = 'block';
     }
   } catch (err) {
     console.warn('[Gmail Screener] Auth check failed:', err);
     authStatusEl.innerHTML =
       '<span class="dot dot-red"></span> Not connected';
     signInBtn.style.display = 'block';
+    if (reauthBtn) reauthBtn.style.display = 'block';
   }
 
   signInBtn.addEventListener('click', async () => {
@@ -147,6 +150,31 @@ document.addEventListener('DOMContentLoaded', async () => {
       signInBtn.textContent = 'Sign in with Google';
     }
   });
+
+  // If auth failed, also show sign-in as "Re-authorize" when there might be stale scopes
+  const reauthBtn = document.getElementById('reauth-btn');
+  if (reauthBtn) {
+    reauthBtn.addEventListener('click', async () => {
+      reauthBtn.disabled = true;
+      reauthBtn.textContent = 'Re-authorizing\u2026';
+      try {
+        const resp = await chrome.runtime.sendMessage({ type: 'SIGN_IN' });
+        if (resp && resp.success) {
+          authStatusEl.innerHTML =
+            '<span class="dot dot-green"></span> Connected to Gmail';
+          reauthBtn.style.display = 'none';
+          signInBtn.style.display = 'none';
+          screenerSection.style.display = 'block';
+          await loadStatus();
+        } else {
+          reauthBtn.textContent = 'Re-authorize failed - try again';
+        }
+      } catch (_) {
+        reauthBtn.textContent = 'Error - try again';
+      }
+      reauthBtn.disabled = false;
+    });
+  }
 
   // ---- Folder links ----
   async function openGmailLabel(labelHash) {
