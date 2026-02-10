@@ -136,25 +136,12 @@ async function _ensureLabel(labelName) {
     (l) => l.name === labelName
   );
   if (existing) {
-    // Verify the label is usable by doing a PATCH (update) with same data
-    // Some labels exist in the list but are corrupted and unusable
-    try {
-      await gmailFetch(`/labels/${existing.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ name: labelName }),
-      });
-      await chrome.storage.local.set({ [storageKeyForLabel(labelName)]: existing.id });
-      console.log(`[Gmail Screener] Label ${labelName} => ${existing.id} (verified)`);
-      return existing.id;
-    } catch (patchErr) {
-      console.warn(`[Gmail Screener] Label ${labelName} (${existing.id}) exists but is corrupt, deleting and recreating`);
-      try {
-        await gmailFetch(`/labels/${existing.id}`, { method: 'DELETE' });
-      } catch (_) { /* ignore delete errors */ }
-    }
+    await chrome.storage.local.set({ [storageKeyForLabel(labelName)]: existing.id });
+    console.log(`[Gmail Screener] Label ${labelName} => ${existing.id}`);
+    return existing.id;
   }
 
-  // Create (or recreate if the existing one was corrupt)
+  // Create
   const newLabel = await gmailFetch('/labels', {
     method: 'POST',
     body: JSON.stringify({
@@ -164,7 +151,7 @@ async function _ensureLabel(labelName) {
     }),
   });
   await chrome.storage.local.set({ [storageKeyForLabel(labelName)]: newLabel.id });
-  console.log(`[Gmail Screener] Label ${labelName} => ${newLabel.id}`);
+  console.log(`[Gmail Screener] Label ${labelName} => ${newLabel.id} (created)`);
   return newLabel.id;
 }
 
@@ -584,7 +571,7 @@ async function continueSweep(query, addLabelIds, removeLabelIds) {
 // ============================================================
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  handleMessage(message)
+  handleMessageWithRetry(message)
     .then(sendResponse)
     .catch((err) => {
       console.error('[Gmail Screener]', err);
@@ -592,6 +579,46 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     });
   return true;
 });
+
+async function handleMessageWithRetry(msg) {
+  try {
+    return await handleMessage(msg);
+  } catch (err) {
+    if (err.message && err.message.includes('Invalid label')) {
+      console.warn('[Gmail Screener] Invalid label error, nuking all labels and retrying...');
+      await nukeAndRecreateLabels();
+      return await handleMessage(msg);
+    }
+    throw err;
+  }
+}
+
+/** Delete ALL our labels from Gmail and recreate them fresh */
+async function nukeAndRecreateLabels() {
+  const labelsResp = await gmailFetch('/labels');
+  const ourLabelNames = [LABEL_SCREENER, LABEL_SCREENOUT, LABEL_REPLY_LATER, LABEL_SET_ASIDE];
+
+  for (const label of (labelsResp.labels || [])) {
+    if (ourLabelNames.includes(label.name)) {
+      console.log(`[Gmail Screener] Deleting label ${label.name} (${label.id})`);
+      try {
+        await gmailFetch(`/labels/${label.id}`, { method: 'DELETE' });
+      } catch (e) {
+        console.warn(`[Gmail Screener] Could not delete ${label.id}:`, e);
+      }
+    }
+  }
+
+  // Clear all caches and dedup promises
+  await clearAllLabelCaches();
+  for (const name of ourLabelNames) {
+    ensureLabelPromises[name] = null;
+  }
+
+  // Recreate all labels fresh
+  await ensureAllLabels();
+  console.log('[Gmail Screener] All labels recreated successfully');
+}
 
 async function handleMessage(msg) {
   switch (msg.type) {
