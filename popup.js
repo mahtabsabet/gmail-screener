@@ -2,30 +2,26 @@
 'use strict';
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const allowedCountEl = document.getElementById('allowed-count');
   const blockedCountEl = document.getElementById('blocked-count');
   const authStatusEl = document.getElementById('auth-status');
   const signInBtn = document.getElementById('sign-in-btn');
   const optionsBtn = document.getElementById('options-btn');
-  const openGmailLink = document.getElementById('open-gmail');
+  const openScreenoutLink = document.getElementById('open-screenout');
 
-  // Load stats
-  chrome.storage.sync.get(['allowedEmails', 'blockedEmails'], (data) => {
-    allowedCountEl.textContent = (data.allowedEmails || []).length;
-    blockedCountEl.textContent = (data.blockedEmails || []).length;
-  });
-
-  // Check auth
+  // Check auth & load count
   try {
-    const resp = await chrome.runtime.sendMessage({ type: 'GET_AUTH_STATUS' });
-    if (resp && resp.authenticated) {
+    const authResp = await chrome.runtime.sendMessage({ type: 'GET_AUTH_STATUS' });
+    if (authResp && authResp.authenticated) {
       authStatusEl.innerHTML =
         '<span class="dot dot-green"></span> Connected to Gmail';
-      signInBtn.style.display = 'none';
+
+      const resp = await chrome.runtime.sendMessage({ type: 'GET_SCREENED_OUT' });
+      blockedCountEl.textContent = resp && resp.emails ? resp.emails.length : 0;
     } else {
       authStatusEl.innerHTML =
         '<span class="dot dot-red"></span> Not connected';
       signInBtn.style.display = 'block';
+      blockedCountEl.textContent = '-';
     }
   } catch (_) {
     authStatusEl.innerHTML =
@@ -33,7 +29,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     signInBtn.style.display = 'block';
   }
 
-  // Sign in
   signInBtn.addEventListener('click', async () => {
     signInBtn.disabled = true;
     signInBtn.textContent = 'Signing in\u2026';
@@ -43,6 +38,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         authStatusEl.innerHTML =
           '<span class="dot dot-green"></span> Connected to Gmail';
         signInBtn.style.display = 'none';
+
+        const r = await chrome.runtime.sendMessage({ type: 'GET_SCREENED_OUT' });
+        blockedCountEl.textContent = r && r.emails ? r.emails.length : 0;
       } else {
         authStatusEl.innerHTML =
           '<span class="dot dot-red"></span> Sign-in failed';
@@ -51,20 +49,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     } catch (err) {
       authStatusEl.innerHTML =
-        '<span class="dot dot-red"></span> Error: ' + err.message;
+        '<span class="dot dot-red"></span> Error';
       signInBtn.disabled = false;
       signInBtn.textContent = 'Sign in with Google';
     }
   });
 
-  // Options
   optionsBtn.addEventListener('click', () => {
     chrome.runtime.openOptionsPage();
   });
 
-  // Open Gmail
-  openGmailLink.addEventListener('click', (e) => {
+  openScreenoutLink.addEventListener('click', (e) => {
     e.preventDefault();
-    chrome.tabs.create({ url: 'https://mail.google.com' });
+    chrome.tabs.create({ url: 'https://mail.google.com/mail/u/0/#label/Screenout' });
   });
 });

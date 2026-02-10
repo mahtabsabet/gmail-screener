@@ -9,7 +9,7 @@
   <div class="container">
     <header>
       <h1>Gmail Sender Screener</h1>
-      <p class="subtitle">Manage your allowed and screened-out senders.</p>
+      <p class="subtitle">Manage your screened-out senders. Data lives in your Gmail filters &mdash; nothing stored locally.</p>
     </header>
 
     <!-- Auth -->
@@ -25,33 +25,12 @@
     <section class="card">
       <h2>Screened-out senders <span class="count" id="blocked-count">0</span></h2>
       <p class="hint">
-        Emails from these senders skip your inbox and go to the Screenout label.
-        Removing a sender here also deletes their Gmail filter.
+        These senders have a Gmail filter that skips your inbox and applies the
+        Screenout label. Removing a sender here deletes their Gmail filter.
       </p>
       <div id="blocked-list" class="sender-list">
-        <div class="empty-state">No screened-out senders yet.</div>
+        <div class="empty-state">Loading&hellip;</div>
       </div>
-    </section>
-
-    <!-- Allowed senders -->
-    <section class="card">
-      <h2>Allowed senders <span class="count" id="allowed-count">0</span></h2>
-      <p class="hint">
-        These senders are recognized and won't show the screening prompt.
-      </p>
-      <div id="allowed-list" class="sender-list">
-        <div class="empty-state">No allowed senders yet.</div>
-      </div>
-    </section>
-
-    <!-- Danger zone -->
-    <section class="card card-danger">
-      <h2>Reset</h2>
-      <p class="hint">
-        Clear all local sender data. Gmail filters already created will remain
-        and must be removed manually from Gmail settings.
-      </p>
-      <button id="reset-btn" class="btn btn-danger">Clear all sender data</button>
     </section>
 
     <footer>

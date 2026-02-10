@@ -2,59 +2,13 @@
    Gmail Sender Screener - Content Script Styles
    ============================================================ */
 
-/* ---- Screening UI container ---- */
-.gs-screening-ui {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: 8px;
-  vertical-align: middle;
-  font-family: 'Google Sans', Roboto, Arial, sans-serif;
-  z-index: 100;
-}
-
-.gs-screening-ui.gs-processing {
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-/* ---- "New sender" badge ---- */
-.gs-badge {
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: 3px;
-  background: #e8f0fe;
-  color: #1a73e8;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 18px;
-  white-space: nowrap;
-  letter-spacing: 0.2px;
-}
-
-/* ---- Action buttons ---- */
-.gs-actions {
+/* ---- Action button (hidden until row hover) ---- */
+.gs-action-btn {
   display: none;
-  gap: 4px;
-  align-items: center;
-}
-
-/* Show actions on row hover */
-tr.gs-has-screening:hover .gs-actions,
-.gs-screening-ui:hover .gs-actions {
-  display: inline-flex;
-}
-
-/* Optionally hide badge when actions are visible */
-tr.gs-has-screening:hover .gs-badge {
-  display: none;
-}
-
-.gs-btn {
-  display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 2px 10px;
+  margin-left: 8px;
   border: none;
   border-radius: 3px;
   font-size: 11px;
@@ -63,41 +17,48 @@ tr.gs-has-screening:hover .gs-badge {
   cursor: pointer;
   white-space: nowrap;
   line-height: 18px;
+  vertical-align: middle;
   transition: background 0.15s, box-shadow 0.15s;
+  z-index: 100;
 }
 
-.gs-btn:focus-visible {
+.gs-action-btn:focus-visible {
   outline: 2px solid #1a73e8;
   outline-offset: 1px;
 }
 
-.gs-btn:disabled {
-  opacity: 0.5;
+.gs-action-btn:disabled {
+  opacity: 0.6;
   cursor: default;
 }
 
-/* Allow button */
-.gs-allow {
-  background: #e6f4ea;
-  color: #137333;
-}
-.gs-allow:hover:not(:disabled) {
-  background: #ceead6;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+/* Show on row hover */
+tr.gs-has-action:hover .gs-action-btn {
+  display: inline-flex;
 }
 
-/* Screen out button */
-.gs-screenout {
+/* Screen out (inbox view) */
+.gs-screen-out {
   background: #fce8e6;
   color: #c5221f;
 }
-.gs-screenout:hover:not(:disabled) {
+.gs-screen-out:hover:not(:disabled) {
   background: #f5c6c2;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-/* ---- Screened-out row animation ---- */
-tr.gs-screened-out {
+/* Screen in (screenout folder view) */
+.gs-screen-in {
+  background: #e6f4ea;
+  color: #137333;
+}
+.gs-screen-in:hover:not(:disabled) {
+  background: #ceead6;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* ---- Row exit animation ---- */
+tr.gs-row-exit {
   opacity: 0;
   transform: translateX(20px);
   transition: opacity 0.3s ease, transform 0.3s ease;
@@ -134,19 +95,11 @@ tr.gs-screened-out {
   transform: translateX(-50%) translateY(20px);
 }
 
-.gs-toast-success {
-  background: #1e8e3e;
-}
-.gs-toast-error {
-  background: #d93025;
-}
-.gs-toast-info {
-  background: #1a73e8;
-}
+.gs-toast-success { background: #1e8e3e; }
+.gs-toast-error   { background: #d93025; }
+.gs-toast-info    { background: #1a73e8; }
 
-.gs-toast-text {
-  flex: 1;
-}
+.gs-toast-text { flex: 1; }
 
 .gs-toast-action {
   background: transparent;
@@ -163,40 +116,4 @@ tr.gs-screened-out {
 .gs-toast-action:hover {
   background: rgba(255, 255, 255, 0.15);
   border-color: #fff;
-}
-
-/* ---- Sign-in banner ---- */
-.gs-signin-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
-  background: #fef7e0;
-  border-bottom: 1px solid #f0e4b8;
-  font-family: 'Google Sans', Roboto, Arial, sans-serif;
-  font-size: 13px;
-  color: #3c4043;
-  position: relative;
-}
-
-.gs-signin-banner .gs-btn {
-  padding: 4px 14px;
-  font-size: 12px;
-}
-
-.gs-banner-dismiss {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: transparent;
-  border: none;
-  font-size: 18px;
-  color: #5f6368;
-  cursor: pointer;
-  padding: 4px 8px;
-  line-height: 1;
-}
-.gs-banner-dismiss:hover {
-  color: #202124;
 }

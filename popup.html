@@ -5,7 +5,7 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      width: 320px;
+      width: 300px;
       font-family: 'Segoe UI', Roboto, Arial, sans-serif;
       font-size: 13px;
       color: #202124;
@@ -20,22 +20,17 @@
       gap: 8px;
     }
     h1 img { width: 20px; height: 20px; }
-    .stats {
-      display: flex;
-      gap: 16px;
-      margin-bottom: 14px;
-    }
     .stat {
-      flex: 1;
       text-align: center;
-      padding: 10px 8px;
+      padding: 12px 8px;
       background: #f8f9fa;
       border-radius: 8px;
+      margin-bottom: 14px;
     }
     .stat-number {
-      font-size: 22px;
+      font-size: 24px;
       font-weight: 700;
-      color: #1a73e8;
+      color: #c5221f;
       line-height: 1.2;
     }
     .stat-label {
@@ -43,82 +38,46 @@
       color: #5f6368;
       margin-top: 2px;
     }
-    .stat.blocked .stat-number { color: #c5221f; }
-
-    #auth-section {
-      padding: 10px 0;
-      border-top: 1px solid #e8eaed;
-    }
-    #auth-status {
-      font-size: 12px;
-      color: #5f6368;
-      margin-bottom: 8px;
-    }
+    #auth-section { padding: 10px 0; border-top: 1px solid #e8eaed; }
+    #auth-status { font-size: 12px; color: #5f6368; margin-bottom: 8px; }
     .dot {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      margin-right: 4px;
-      vertical-align: middle;
+      display: inline-block; width: 8px; height: 8px;
+      border-radius: 50%; margin-right: 4px; vertical-align: middle;
     }
     .dot-green { background: #1e8e3e; }
     .dot-red { background: #d93025; }
-
     .btn {
-      display: block;
-      width: 100%;
-      padding: 8px;
-      border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      text-align: center;
-      margin-top: 6px;
-      transition: background 0.15s;
+      display: block; width: 100%; padding: 8px; border: none;
+      border-radius: 6px; font-size: 13px; font-weight: 500;
+      cursor: pointer; text-align: center; margin-top: 6px;
       font-family: inherit;
     }
-    .btn-primary {
-      background: #1a73e8;
-      color: #fff;
-    }
+    .btn-primary { background: #1a73e8; color: #fff; }
     .btn-primary:hover { background: #1765cc; }
-    .btn-secondary {
-      background: #f1f3f4;
-      color: #3c4043;
-    }
+    .btn-secondary { background: #f1f3f4; color: #3c4043; }
     .btn-secondary:hover { background: #e8eaed; }
-
     #sign-in-btn { display: none; }
-    .link-row {
-      margin-top: 10px;
-      text-align: center;
-    }
+    .link-row { margin-top: 10px; text-align: center; }
     .link-row a {
-      font-size: 12px;
-      color: #1a73e8;
-      text-decoration: none;
-      cursor: pointer;
+      font-size: 12px; color: #1a73e8;
+      text-decoration: none; cursor: pointer;
     }
     .link-row a:hover { text-decoration: underline; }
+    .note {
+      font-size: 11px; color: #9aa0a6;
+      text-align: center; margin-top: 10px;
+    }
   </style>
 </head>
 <body>
   <h1>
     <img src="icons/icon48.png" alt="">
-    Gmail Sender Screener
+    Sender Screener
   </h1>
 
-  <div class="stats">
-    <div class="stat">
-      <div class="stat-number" id="allowed-count">-</div>
-      <div class="stat-label">Allowed</div>
-    </div>
-    <div class="stat blocked">
-      <div class="stat-number" id="blocked-count">-</div>
-      <div class="stat-label">Screened out</div>
-    </div>
+  <div class="stat">
+    <div class="stat-number" id="blocked-count">-</div>
+    <div class="stat-label">senders screened out</div>
   </div>
 
   <div id="auth-section">
@@ -129,8 +88,10 @@
   <button id="options-btn" class="btn btn-secondary">Manage senders</button>
 
   <div class="link-row">
-    <a id="open-gmail">Open Gmail</a>
+    <a id="open-screenout">Open Screenout folder</a>
   </div>
+
+  <div class="note">Data stored in Gmail filters only &mdash; nothing local.</div>
 
   <script src="popup.js"></script>
 </body>

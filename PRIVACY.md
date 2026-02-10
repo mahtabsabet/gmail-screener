@@ -2,56 +2,49 @@
 
 ## What this extension does
 
-Gmail Sender Screener helps you screen unknown email senders directly from your Gmail inbox. It creates Gmail labels and filters to automatically route screened-out senders' emails to a dedicated folder.
+Gmail Sender Screener lets you screen out email senders directly from your Gmail inbox by creating Gmail filters. Screened-out senders' emails skip your inbox and go to a "Screenout" label. You can reverse this from the Screenout folder.
 
 ## What data is accessed
 
-- **Sender email addresses** — Extracted from the Gmail inbox DOM (the `email` attribute on sender name elements) to identify unknown senders.
-- **Gmail labels** — The extension creates and manages a "Screenout" label in your Gmail account.
-- **Gmail filters** — The extension creates filters to automatically route future emails from screened-out senders.
-- **Message metadata** — The extension lists messages by sender (using Gmail search) to move existing messages when screening out a sender. Only message IDs are used; message content is never read.
+- **Sender email addresses** — extracted from the Gmail inbox DOM to show screening buttons.
+- **Gmail labels** — the extension creates and reads a "Screenout" label.
+- **Gmail filters** — the extension creates, reads, and deletes filters (one per screened-out sender).
+- **Message IDs** — the extension lists messages by sender to move them between inbox and Screenout. Only IDs are used; message content is never read.
 
-## What data is stored
+## What is stored
 
-All data is stored **locally in your browser** using Chrome's storage APIs:
+Locally (in the browser):
+- **Screenout label ID** — cached in `chrome.storage.local` to avoid re-fetching it on every action. This is the only locally stored data.
 
-- `allowedEmails` — List of sender email addresses you have allowed (stored in `chrome.storage.sync`)
-- `blockedEmails` — List of sender email addresses you have screened out (stored in `chrome.storage.sync`)
-- `filterMap` — Mapping of screened-out senders to their Gmail filter IDs (stored in `chrome.storage.local`, used for undo functionality)
-- `screenoutLabelId` — The Gmail label ID for the Screenout label (stored in `chrome.storage.local`)
+In your Gmail account:
+- **Gmail filters** — one filter per screened-out sender. These are the source of truth for all screening decisions.
+- **Screenout label** — a standard Gmail label.
 
 ## What is NOT stored or accessed
 
 - Email bodies or message content
 - Email attachments
-- Contact lists or address books
-- Passwords or credentials (OAuth tokens are managed by Chrome's identity API)
-- Browsing history outside of Gmail
+- Contact lists
+- Browsing history
+- Passwords or credentials (OAuth tokens are managed by Chrome)
 
 ## What is NOT transmitted
 
 - No data is sent to any third-party server
-- No analytics or telemetry is collected
-- The only network requests are to Google's Gmail API (`googleapis.com`), authenticated with your own Google account
+- No analytics or telemetry
+- The only network requests go to Google's Gmail API (`googleapis.com`), authenticated with your own Google account
 
 ## Gmail API scopes
 
 | Scope | Purpose |
 |---|---|
-| `gmail.modify` | Create labels, list messages by sender, modify labels on messages (move to/from Screenout) |
-| `gmail.settings.basic` | Create and delete Gmail filters for screened-out senders |
-
-These are the minimum scopes required for the extension's functionality. The extension does not request full mail read access.
-
-## Data retention
-
-- Sender lists persist in Chrome's storage until you remove them via the options page or clear extension data
-- Gmail filters persist in your Gmail account until you or the extension removes them
-- Uninstalling the extension removes all locally stored data but does **not** remove Gmail filters or labels already created
+| `gmail.modify` | Create labels, list messages by sender, move messages between labels |
+| `gmail.settings.basic` | Create and delete Gmail filters |
 
 ## Your control
 
-- You can view and remove any allowed or screened-out sender from the extension's options page
-- You can clear all extension data from the options page
-- You can remove Gmail filters directly from Gmail Settings → Filters and Blocked Addresses
-- You can revoke the extension's access from your [Google Account permissions](https://myaccount.google.com/permissions)
+- Remove any screened-out sender from the extension's options page (deletes their Gmail filter)
+- Use the "Screen in" button in the Screenout folder to reverse a decision
+- Remove filters directly in Gmail Settings → Filters and Blocked Addresses
+- Revoke extension access from [Google Account permissions](https://myaccount.google.com/permissions)
+- Uninstalling the extension removes the cached label ID but does **not** remove Gmail filters or labels already created

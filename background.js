@@ -69,7 +69,6 @@ async function gmailFetch(path, options = {}) {
     throw new Error(`Gmail API ${response.status}: ${body}`);
   }
 
-  // 204 No Content (e.g. DELETE)
   if (response.status === 204) return null;
   return response.json();
 }
@@ -81,12 +80,11 @@ async function gmailFetch(path, options = {}) {
 async function getScreenoutLabelId() {
   const stored = await chrome.storage.local.get(['screenoutLabelId']);
   if (stored.screenoutLabelId) {
-    // Verify it still exists
     try {
       await gmailFetch(`/labels/${stored.screenoutLabelId}`);
       return stored.screenoutLabelId;
     } catch (_) {
-      // Label was deleted externally — recreate below
+      // deleted externally
     }
   }
   return null;
@@ -96,7 +94,6 @@ async function ensureScreenoutLabel() {
   const cached = await getScreenoutLabelId();
   if (cached) return cached;
 
-  // Check if label already exists on server
   const labelsResp = await gmailFetch('/labels');
   const existing = (labelsResp.labels || []).find(
     (l) => l.name === DEFAULT_LABEL_NAME
@@ -106,7 +103,6 @@ async function ensureScreenoutLabel() {
     return existing.id;
   }
 
-  // Create new label
   const newLabel = await gmailFetch('/labels', {
     method: 'POST',
     body: JSON.stringify({
@@ -123,16 +119,32 @@ async function ensureScreenoutLabel() {
 // Filter management
 // ============================================================
 
-async function findExistingFilter(email) {
+async function getAllScreenoutFilters() {
+  const labelId = await getScreenoutLabelId();
+  if (!labelId) return [];
   const resp = await gmailFetch('/settings/filters');
   const filters = resp.filter || [];
+  return filters.filter((f) => {
+    if (!f.criteria || !f.criteria.from) return false;
+    const adds = f.action?.addLabelIds || [];
+    return adds.includes(labelId);
+  });
+}
+
+async function getScreenedOutEmails() {
+  const filters = await getAllScreenoutFilters();
+  return filters.map((f) => f.criteria.from.toLowerCase());
+}
+
+async function findFilterForSender(email) {
+  const filters = await getAllScreenoutFilters();
   return filters.find(
-    (f) => f.criteria && f.criteria.from && f.criteria.from.toLowerCase() === email.toLowerCase()
+    (f) => f.criteria.from.toLowerCase() === email.toLowerCase()
   );
 }
 
 async function createFilterForSender(email, labelId) {
-  const existing = await findExistingFilter(email);
+  const existing = await findFilterForSender(email);
   if (existing) return existing.id;
 
   const filter = await gmailFetch('/settings/filters', {
@@ -152,12 +164,12 @@ async function deleteFilter(filterId) {
   try {
     await gmailFetch(`/settings/filters/${filterId}`, { method: 'DELETE' });
   } catch (_) {
-    // Filter may already have been deleted
+    // already deleted
   }
 }
 
 // ============================================================
-// Thread / message operations
+// Message operations
 // ============================================================
 
 async function moveInboxMessagesToScreenout(email, labelId) {
@@ -165,34 +177,37 @@ async function moveInboxMessagesToScreenout(email, labelId) {
   const result = await gmailFetch(
     `/messages?q=${encodeURIComponent(query)}&maxResults=500`
   );
-
   if (!result.messages || result.messages.length === 0) return [];
 
-  const messageIds = result.messages.map((m) => m.id);
-
+  const ids = result.messages.map((m) => m.id);
   await gmailFetch('/messages/batchModify', {
     method: 'POST',
     body: JSON.stringify({
-      ids: messageIds,
+      ids,
       addLabelIds: [labelId],
       removeLabelIds: ['INBOX'],
     }),
   });
-
-  return messageIds;
+  return ids;
 }
 
-async function undoMoveMessages(messageIds, labelId) {
-  if (!messageIds || messageIds.length === 0) return;
+async function moveScreenoutMessagesToInbox(email, labelId) {
+  const query = `from:${email} label:${DEFAULT_LABEL_NAME}`;
+  const result = await gmailFetch(
+    `/messages?q=${encodeURIComponent(query)}&maxResults=500`
+  );
+  if (!result.messages || result.messages.length === 0) return [];
 
+  const ids = result.messages.map((m) => m.id);
   await gmailFetch('/messages/batchModify', {
     method: 'POST',
     body: JSON.stringify({
-      ids: messageIds,
+      ids,
       addLabelIds: ['INBOX'],
       removeLabelIds: [labelId],
     }),
   });
+  return ids;
 }
 
 // ============================================================
@@ -203,117 +218,64 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   handleMessage(message)
     .then(sendResponse)
     .catch((err) => {
-      console.error('[Gmail Screener] Error handling message:', err);
+      console.error('[Gmail Screener]', err);
       sendResponse({ success: false, error: err.message });
     });
-  return true; // keep the message channel open for async response
+  return true;
 });
 
 async function handleMessage(msg) {
   switch (msg.type) {
-    // ----------------------------------------------------------
-    // Screen out a sender
-    // ----------------------------------------------------------
     case 'SCREEN_OUT': {
       const email = msg.email.toLowerCase();
       const labelId = await ensureScreenoutLabel();
       const filterId = await createFilterForSender(email, labelId);
-      const movedMessageIds = await moveInboxMessagesToScreenout(email, labelId);
-
-      // Persist
-      const data = await chrome.storage.sync.get(['blockedEmails']);
-      const blocked = data.blockedEmails || [];
-      if (!blocked.includes(email)) blocked.push(email);
-      await chrome.storage.sync.set({ blockedEmails: blocked });
-
-      // Store filter+message info locally (for undo)
-      const local = await chrome.storage.local.get(['filterMap']);
-      const filterMap = local.filterMap || {};
-      filterMap[email] = { filterId, movedMessageIds };
-      await chrome.storage.local.set({ filterMap });
-
-      return { success: true, filterId, movedMessageIds };
+      const movedIds = await moveInboxMessagesToScreenout(email, labelId);
+      return { success: true, filterId, movedIds };
     }
 
-    // ----------------------------------------------------------
-    // Allow a sender
-    // ----------------------------------------------------------
-    case 'ALLOW': {
+    case 'SCREEN_IN': {
       const email = msg.email.toLowerCase();
-      const data = await chrome.storage.sync.get(['allowedEmails']);
-      const allowed = data.allowedEmails || [];
-      if (!allowed.includes(email)) allowed.push(email);
-      await chrome.storage.sync.set({ allowedEmails: allowed });
+      // Delete the filter so future mail goes to inbox
+      const filter = await findFilterForSender(email);
+      if (filter) await deleteFilter(filter.id);
+      // Move existing screened-out messages back to inbox
+      const labelId = await getScreenoutLabelId();
+      if (labelId) await moveScreenoutMessagesToInbox(email, labelId);
       return { success: true };
     }
 
-    // ----------------------------------------------------------
-    // Undo screen-out
-    // ----------------------------------------------------------
     case 'UNDO_SCREEN_OUT': {
       const email = msg.email.toLowerCase();
-
-      // Remove from blocked list
-      const syncData = await chrome.storage.sync.get(['blockedEmails']);
-      const blocked = (syncData.blockedEmails || []).filter((e) => e !== email);
-      await chrome.storage.sync.set({ blockedEmails: blocked });
-
-      // Delete filter & undo message moves
-      const local = await chrome.storage.local.get([
-        'filterMap',
-        'screenoutLabelId',
-      ]);
-      const filterMap = local.filterMap || {};
-      if (filterMap[email]) {
-        await deleteFilter(filterMap[email].filterId);
-        if (local.screenoutLabelId && filterMap[email].movedMessageIds) {
-          await undoMoveMessages(
-            filterMap[email].movedMessageIds,
-            local.screenoutLabelId
-          );
-        }
-        delete filterMap[email];
-        await chrome.storage.local.set({ filterMap });
+      const movedIds = msg.movedIds || [];
+      const filter = await findFilterForSender(email);
+      if (filter) await deleteFilter(filter.id);
+      const labelId = await getScreenoutLabelId();
+      if (labelId && movedIds.length > 0) {
+        await gmailFetch('/messages/batchModify', {
+          method: 'POST',
+          body: JSON.stringify({
+            ids: movedIds,
+            addLabelIds: ['INBOX'],
+            removeLabelIds: [labelId],
+          }),
+        });
       }
-
       return { success: true };
     }
 
-    // ----------------------------------------------------------
-    // Remove a sender from the allowed list
-    // ----------------------------------------------------------
-    case 'REMOVE_ALLOWED': {
+    case 'GET_SCREENED_OUT': {
+      const emails = await getScreenedOutEmails();
+      return { emails };
+    }
+
+    case 'REMOVE_SCREENED_OUT': {
       const email = msg.email.toLowerCase();
-      const data = await chrome.storage.sync.get(['allowedEmails']);
-      const allowed = (data.allowedEmails || []).filter((e) => e !== email);
-      await chrome.storage.sync.set({ allowedEmails: allowed });
+      const filter = await findFilterForSender(email);
+      if (filter) await deleteFilter(filter.id);
       return { success: true };
     }
 
-    // ----------------------------------------------------------
-    // Remove a sender from the blocked list (+ delete filter)
-    // ----------------------------------------------------------
-    case 'REMOVE_BLOCKED': {
-      const email = msg.email.toLowerCase();
-
-      const syncData = await chrome.storage.sync.get(['blockedEmails']);
-      const blocked = (syncData.blockedEmails || []).filter((e) => e !== email);
-      await chrome.storage.sync.set({ blockedEmails: blocked });
-
-      const local = await chrome.storage.local.get(['filterMap']);
-      const filterMap = local.filterMap || {};
-      if (filterMap[email]) {
-        await deleteFilter(filterMap[email].filterId);
-        delete filterMap[email];
-        await chrome.storage.local.set({ filterMap });
-      }
-
-      return { success: true };
-    }
-
-    // ----------------------------------------------------------
-    // Auth status check
-    // ----------------------------------------------------------
     case 'GET_AUTH_STATUS': {
       try {
         await getAuthToken(false);
@@ -323,9 +285,6 @@ async function handleMessage(msg) {
       }
     }
 
-    // ----------------------------------------------------------
-    // Interactive sign-in
-    // ----------------------------------------------------------
     case 'SIGN_IN': {
       try {
         await getAuthToken(true);
@@ -333,20 +292,6 @@ async function handleMessage(msg) {
       } catch (err) {
         return { success: false, error: err.message };
       }
-    }
-
-    // ----------------------------------------------------------
-    // Get all sender lists (for options page)
-    // ----------------------------------------------------------
-    case 'GET_ALL_SENDERS': {
-      const data = await chrome.storage.sync.get([
-        'allowedEmails',
-        'blockedEmails',
-      ]);
-      return {
-        allowed: data.allowedEmails || [],
-        blocked: data.blockedEmails || [],
-      };
     }
 
     default:
