@@ -3,10 +3,11 @@
 (function () {
   'use strict';
 
-  let processedRows = new WeakSet();
+  let processedRows = new WeakSet(); // only used to avoid redundant extractSenderEmail calls
   let observer = null;
   let debounceTimer = null;
   let authenticated = false;
+  let periodicTimer = null;
 
   // ============================================================
   // View detection
@@ -299,12 +300,8 @@
   // ============================================================
 
   function processRow(row) {
-    // Re-inject if Gmail re-rendered the row and stripped our buttons
-    if (processedRows.has(row)) {
-      if (row.querySelector('.gs-actions')) return;
-      // Buttons were removed — fall through to re-inject
-    }
-    processedRows.add(row);
+    // Always check if buttons are present — Gmail frequently re-renders rows
+    if (row.querySelector('.gs-actions')) return;
 
     const email = extractSenderEmail(row);
     if (!email) return;
@@ -344,6 +341,13 @@
     observer.observe(document.body, { childList: true, subtree: true });
   }
 
+  // Periodic scan to catch rows the MutationObserver misses
+  // (Gmail aggressively re-renders unread/top rows)
+  function startPeriodicScan() {
+    if (periodicTimer) clearInterval(periodicTimer);
+    periodicTimer = setInterval(processAllVisible, 2000);
+  }
+
   // ============================================================
   // URL change detection (Gmail SPA)
   // ============================================================
@@ -353,8 +357,6 @@
     setInterval(() => {
       if (location.href !== lastUrl) {
         lastUrl = location.href;
-        // View changed — clear processed set, re-scan after render
-        processedRows = new WeakSet();
         setTimeout(processAllVisible, 1000);
       }
     }, 500);
@@ -367,9 +369,9 @@
   async function init() {
     await checkAuth();
     startObserver();
+    startPeriodicScan();
     watchUrlChanges();
     setTimeout(processAllVisible, 2000);
-    setTimeout(processAllVisible, 5000);
   }
 
   if (document.readyState === 'loading') {
