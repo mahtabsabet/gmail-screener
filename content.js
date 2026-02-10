@@ -299,7 +299,11 @@
   // ============================================================
 
   function processRow(row) {
-    if (processedRows.has(row)) return;
+    // Re-inject if Gmail re-rendered the row and stripped our buttons
+    if (processedRows.has(row)) {
+      if (row.querySelector('.gs-actions')) return;
+      // Buttons were removed — fall through to re-inject
+    }
     processedRows.add(row);
 
     const email = extractSenderEmail(row);
