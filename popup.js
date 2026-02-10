@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const openScreenout = document.getElementById('open-screenout');
   const openSetAside = document.getElementById('open-setaside');
   const openOptionsLink = document.getElementById('open-options');
+  const reauthBtn = document.getElementById('reauth-btn');
 
   // ---- Status loading ----
   async function loadStatus() {
@@ -151,8 +152,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // If auth failed, also show sign-in as "Re-authorize" when there might be stale scopes
-  const reauthBtn = document.getElementById('reauth-btn');
+  // Re-authorize button handler
   if (reauthBtn) {
     reauthBtn.addEventListener('click', async () => {
       reauthBtn.disabled = true;

@@ -358,11 +358,13 @@ async function sweepMessages(query, addLabelIds, removeLabelIds, cap) {
 async function modifyMessages(ids, addLabelIds, removeLabelIds) {
   if (!ids || ids.length === 0) return;
   const body = JSON.stringify({ addLabelIds, removeLabelIds });
-  // Process in parallel batches of 10
+  // Process in parallel batches of 10, ignoring errors for individual messages
+  // (message may have been deleted/moved since the search)
   for (let i = 0; i < ids.length; i += 10) {
     const batch = ids.slice(i, i + 10);
     await Promise.all(batch.map((id) =>
       gmailFetch(`/messages/${id}/modify`, { method: 'POST', body })
+        .catch((err) => console.warn(`[Gmail Screener] Skipping message ${id}:`, err.message))
     ));
   }
 }
