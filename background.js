@@ -109,10 +109,16 @@ async function getLabelId(labelName) {
       await gmailFetch(`/labels/${stored[key]}`);
       return stored[key];
     } catch (err) {
-      console.warn(`[Gmail Screener] Cached label ${labelName} no longer exists:`, err);
+      console.warn(`[Gmail Screener] Cached label ${labelName} (${stored[key]}) is stale, clearing`, err);
+      await chrome.storage.local.remove([key]);
     }
   }
   return null;
+}
+
+function clearAllLabelCaches() {
+  const keys = [LABEL_SCREENER, LABEL_SCREENOUT, LABEL_REPLY_LATER, LABEL_SET_ASIDE].map(storageKeyForLabel);
+  return chrome.storage.local.remove(keys);
 }
 
 async function ensureLabel(labelName) {
@@ -308,13 +314,64 @@ async function sweepMessages(query, addLabelIds, removeLabelIds, cap) {
   if (!result.messages || result.messages.length === 0) return { moved: 0, ids: [] };
 
   const ids = result.messages.map((m) => m.id);
-  await gmailFetch('/messages/batchModify', {
-    method: 'POST',
-    body: JSON.stringify({ ids, addLabelIds, removeLabelIds }),
-  });
+  await batchModifyWithRetry(ids, addLabelIds, removeLabelIds);
 
   const hasMore = result.resultSizeEstimate > ids.length || ids.length >= maxResults;
   return { moved: ids.length, ids, hasMore };
+}
+
+/** batchModify with one retry on invalid-label errors (stale cached IDs) */
+async function batchModifyWithRetry(ids, addLabelIds, removeLabelIds) {
+  try {
+    await gmailFetch('/messages/batchModify', {
+      method: 'POST',
+      body: JSON.stringify({ ids, addLabelIds, removeLabelIds }),
+    });
+  } catch (err) {
+    if (err.message && err.message.includes('Invalid label')) {
+      console.warn('[Gmail Screener] Invalid label in batchModify, refreshing caches and retrying');
+      await clearAllLabelCaches();
+      // Re-resolve all label IDs used in this call
+      const refreshedAdd = await refreshLabelIds(addLabelIds);
+      const refreshedRemove = await refreshLabelIds(removeLabelIds);
+      await gmailFetch('/messages/batchModify', {
+        method: 'POST',
+        body: JSON.stringify({ ids, addLabelIds: refreshedAdd, removeLabelIds: refreshedRemove }),
+      });
+    } else {
+      throw err;
+    }
+  }
+}
+
+/** Re-resolve label IDs, replacing stale custom label IDs with fresh ones */
+async function refreshLabelIds(labelIds) {
+  if (!labelIds || labelIds.length === 0) return labelIds;
+  const nameById = {};
+  for (const name of [LABEL_SCREENER, LABEL_SCREENOUT, LABEL_REPLY_LATER, LABEL_SET_ASIDE]) {
+    const key = storageKeyForLabel(name);
+    const stored = await chrome.storage.local.get([key]);
+    if (stored[key]) nameById[stored[key]] = name;
+  }
+  const refreshed = [];
+  for (const id of labelIds) {
+    // System labels (INBOX, SPAM, etc.) are fine as-is
+    if (!id.startsWith('Label_')) {
+      refreshed.push(id);
+      continue;
+    }
+    // Check if this ID matches a known label name; if not, try re-resolving by reverse lookup
+    const labelName = nameById[id];
+    if (labelName) {
+      refreshed.push(await ensureLabel(labelName));
+    } else {
+      // Unknown custom label - try to find which of our labels had this old ID
+      // by re-ensuring all and seeing which one changed
+      await ensureAllLabels();
+      refreshed.push(id); // keep as-is if we can't figure it out
+    }
+  }
+  return refreshed;
 }
 
 // ============================================================
@@ -426,14 +483,7 @@ async function handleUndoAllow(target, movedIds) {
   if (existing) await deleteFilter(existing.id);
 
   if (movedIds && movedIds.length > 0) {
-    await gmailFetch('/messages/batchModify', {
-      method: 'POST',
-      body: JSON.stringify({
-        ids: movedIds,
-        addLabelIds: [screenerLabelId],
-        removeLabelIds: ['INBOX'],
-      }),
-    });
+    await batchModifyWithRetry(movedIds, [screenerLabelId], ['INBOX']);
   }
 
   return { success: true };
@@ -448,14 +498,7 @@ async function handleUndoScreenOut(target, movedIds) {
   if (existing) await deleteFilter(existing.id);
 
   if (movedIds && movedIds.length > 0) {
-    await gmailFetch('/messages/batchModify', {
-      method: 'POST',
-      body: JSON.stringify({
-        ids: movedIds,
-        addLabelIds: [screenerLabelId],
-        removeLabelIds: [screenoutLabelId],
-      }),
-    });
+    await batchModifyWithRetry(movedIds, [screenerLabelId], [screenoutLabelId]);
   }
 
   return { success: true };
@@ -575,14 +618,7 @@ async function handleMessage(msg) {
         }
       }
       if (allMessageIds.length > 0) {
-        await gmailFetch('/messages/batchModify', {
-          method: 'POST',
-          body: JSON.stringify({
-            ids: allMessageIds,
-            addLabelIds: [labelId],
-            removeLabelIds: ['INBOX'],
-          }),
-        });
+        await batchModifyWithRetry(allMessageIds, [labelId], ['INBOX']);
       }
       return { success: true, movedIds: allMessageIds };
     }
@@ -591,8 +627,7 @@ async function handleMessage(msg) {
       const labelName = msg.labelName;
       const threadIds = msg.threadIds || [];
       if (threadIds.length === 0) return { success: false, error: 'No threads specified' };
-      const labelId = await getLabelId(labelName);
-      if (!labelId) return { success: false, error: `Label ${labelName} not found` };
+      const labelId = await ensureLabel(labelName);
       const allMessageIds = [];
       for (const threadId of threadIds) {
         const thread = await gmailFetch(`/threads/${threadId}?format=minimal`);
@@ -601,14 +636,7 @@ async function handleMessage(msg) {
         }
       }
       if (allMessageIds.length > 0) {
-        await gmailFetch('/messages/batchModify', {
-          method: 'POST',
-          body: JSON.stringify({
-            ids: allMessageIds,
-            addLabelIds: ['INBOX'],
-            removeLabelIds: [labelId],
-          }),
-        });
+        await batchModifyWithRetry(allMessageIds, ['INBOX'], [labelId]);
       }
       return { success: true };
     }
