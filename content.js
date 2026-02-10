@@ -197,6 +197,7 @@
       if (resp && resp.success) {
         const hiddenRows = hideMatchingRows(target);
 
+        refreshPanelCount();
         showToast(`Screened out ${target}`, 'success', {
           action: 'Undo',
           onAction: () => handleUndoScreenOut(target, hiddenRows, resp.movedIds),
@@ -221,6 +222,7 @@
       const resp = await chrome.runtime.sendMessage({ type: 'SCREEN_IN', target });
       if (resp && resp.success) {
         hideMatchingRows(target);
+        refreshPanelCount();
         showToast(`Screened in ${target} — moved to inbox`, 'success');
       } else {
         showToast(`Failed: ${resp?.error || 'Unknown error'}`, 'error');
@@ -241,6 +243,7 @@
       });
       if (resp && resp.success) {
         showRows(hiddenRows);
+        refreshPanelCount();
         showToast(`Undo successful for ${target}`, 'success');
       } else {
         showToast(`Undo failed: ${resp?.error || 'Unknown error'}`, 'error');
@@ -293,6 +296,138 @@
       toast.classList.add('gs-toast-dismiss');
       setTimeout(() => toast.remove(), 300);
     }, timeout);
+  }
+
+  // ============================================================
+  // Screened-out panel (in-Gmail UI)
+  // ============================================================
+
+  let panelEl = null;
+  let panelTabEl = null;
+  let overlayEl = null;
+
+  function createPanel() {
+    if (panelEl) return;
+
+    // Tab on right edge
+    panelTabEl = document.createElement('div');
+    panelTabEl.className = 'gs-panel-tab';
+    panelTabEl.innerHTML = 'Screened out <span class="gs-panel-tab-count" id="gs-tab-count">0</span>';
+    panelTabEl.addEventListener('click', togglePanel);
+    document.body.appendChild(panelTabEl);
+
+    // Overlay
+    overlayEl = document.createElement('div');
+    overlayEl.className = 'gs-panel-overlay';
+    overlayEl.addEventListener('click', closePanel);
+    document.body.appendChild(overlayEl);
+
+    // Panel
+    panelEl = document.createElement('div');
+    panelEl.className = 'gs-panel';
+    panelEl.innerHTML =
+      '<div class="gs-panel-header">' +
+        '<span class="gs-panel-title">Screened out <span class="gs-panel-count" id="gs-panel-count">0</span></span>' +
+        '<button class="gs-panel-close" title="Close">\u00d7</button>' +
+      '</div>' +
+      '<div class="gs-panel-list" id="gs-panel-list">' +
+        '<div class="gs-panel-empty">Loading\u2026</div>' +
+      '</div>' +
+      '<div class="gs-panel-footer">' +
+        '<a id="gs-panel-screenout-link">Open Screenout folder</a>' +
+      '</div>';
+    document.body.appendChild(panelEl);
+
+    panelEl.querySelector('.gs-panel-close').addEventListener('click', closePanel);
+    panelEl.querySelector('#gs-panel-screenout-link').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.location.hash = '#label/Screenout';
+      closePanel();
+    });
+
+    // Load count for tab badge
+    refreshPanelCount();
+  }
+
+  function togglePanel() {
+    if (panelEl.classList.contains('gs-panel-open')) {
+      closePanel();
+    } else {
+      openPanel();
+    }
+  }
+
+  async function openPanel() {
+    panelEl.classList.add('gs-panel-open');
+    overlayEl.classList.add('gs-panel-overlay-visible');
+    await refreshPanelList();
+  }
+
+  function closePanel() {
+    panelEl.classList.remove('gs-panel-open');
+    overlayEl.classList.remove('gs-panel-overlay-visible');
+  }
+
+  async function refreshPanelCount() {
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: 'GET_SCREENED_OUT' });
+      const count = resp && resp.emails ? resp.emails.length : 0;
+      const tabCount = document.getElementById('gs-tab-count');
+      if (tabCount) tabCount.textContent = count;
+    } catch (_) {}
+  }
+
+  async function refreshPanelList() {
+    const listEl = document.getElementById('gs-panel-list');
+    const countEl = document.getElementById('gs-panel-count');
+    const tabCount = document.getElementById('gs-tab-count');
+    listEl.innerHTML = '<div class="gs-panel-empty">Loading\u2026</div>';
+
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: 'GET_SCREENED_OUT' });
+      const emails = resp && resp.emails ? resp.emails : [];
+      countEl.textContent = emails.length;
+      if (tabCount) tabCount.textContent = emails.length;
+
+      if (emails.length === 0) {
+        listEl.innerHTML = '<div class="gs-panel-empty">No screened-out senders yet.</div>';
+        return;
+      }
+
+      listEl.innerHTML = '';
+      const sorted = [...emails].sort();
+      for (const email of sorted) {
+        const row = document.createElement('div');
+        row.className = 'gs-panel-row';
+
+        const label = document.createElement('span');
+        label.className = 'gs-panel-email';
+        if (email.startsWith('@')) label.classList.add('gs-panel-domain');
+        label.textContent = email;
+        row.appendChild(label);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'gs-panel-remove';
+        removeBtn.textContent = 'Remove';
+        removeBtn.title = 'Delete Gmail filter for ' + email;
+        removeBtn.addEventListener('click', async () => {
+          removeBtn.disabled = true;
+          removeBtn.textContent = '\u2026';
+          try {
+            await chrome.runtime.sendMessage({ type: 'REMOVE_SCREENED_OUT', email });
+            await refreshPanelList();
+          } catch (_) {
+            removeBtn.disabled = false;
+            removeBtn.textContent = 'Remove';
+          }
+        });
+        row.appendChild(removeBtn);
+
+        listEl.appendChild(row);
+      }
+    } catch (err) {
+      listEl.innerHTML = '<div class="gs-panel-empty">Failed to load.</div>';
+    }
   }
 
   // ============================================================
@@ -368,6 +503,7 @@
 
   async function init() {
     await checkAuth();
+    createPanel();
     startObserver();
     startPeriodicScan();
     watchUrlChanges();
