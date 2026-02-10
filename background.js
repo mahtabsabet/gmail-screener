@@ -3,15 +3,14 @@
 
 const GMAIL_API_BASE = 'https://www.googleapis.com/gmail/v1/users/me';
 const LABEL_SCREENER = 'Screener';
-const LABEL_SCREENOUT = 'Screenout';
 const LABEL_REPLY_LATER = 'ReplyLater';
 const LABEL_SET_ASIDE = 'SetAside';
+const LABEL_ALLOWED = 'Allowed';
 const DEFAULT_SWEEP_CAP = 200;
 const DEFAULT_FILTER_QUERY = '-is:chat';
 const ensureLabelPromises = {};
 const labelIdCache = {}; // In-memory cache: { labelName: { id, ts } }
 const LABEL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-let cachedAllowedEmails = null; // { emails, ts } - used by periodic sweep
 
 // ============================================================
 // OAuth
@@ -167,7 +166,7 @@ async function getLabelId(labelName) {
 }
 
 function clearAllLabelCaches() {
-  const keys = [LABEL_SCREENER, LABEL_SCREENOUT, LABEL_REPLY_LATER, LABEL_SET_ASIDE].map(storageKeyForLabel);
+  const keys = [LABEL_SCREENER, LABEL_REPLY_LATER, LABEL_SET_ASIDE, LABEL_ALLOWED].map(storageKeyForLabel);
   return chrome.storage.local.remove(keys);
 }
 
@@ -227,13 +226,13 @@ async function _ensureLabel(labelName) {
 }
 
 async function ensureAllLabels() {
-  const [screenerLabelId, screenoutLabelId, setAsideLabelId, replyLaterLabelId] = await Promise.all([
+  const [screenerLabelId, setAsideLabelId, replyLaterLabelId, allowedLabelId] = await Promise.all([
     ensureLabel(LABEL_SCREENER),
-    ensureLabel(LABEL_SCREENOUT),
     ensureLabel(LABEL_SET_ASIDE),
     ensureLabel(LABEL_REPLY_LATER),
+    ensureLabel(LABEL_ALLOWED),
   ]);
-  return { screenerLabelId, screenoutLabelId, setAsideLabelId, replyLaterLabelId };
+  return { screenerLabelId, setAsideLabelId, replyLaterLabelId, allowedLabelId };
 }
 
 // ============================================================
@@ -245,7 +244,6 @@ const FILTERS_CACHE_TTL = 30 * 1000; // 30 seconds
 
 function invalidateFiltersCache() {
   filtersCache = null;
-  cachedAllowedEmails = null;
 }
 
 async function getAllFilters() {
@@ -258,41 +256,19 @@ async function getAllFilters() {
   return filters;
 }
 
-/** Find all screenout filters (filters that add Screenout label with a from: criteria) */
-async function getAllScreenoutFilters(screenoutLabelId, filters) {
-  if (!screenoutLabelId) screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
+/** Find all allow filters (filters that add Allowed label with a from: criteria) */
+async function getAllAllowFilters(allowedLabelId, filters) {
+  if (!allowedLabelId) allowedLabelId = await ensureLabel(LABEL_ALLOWED);
   if (!filters) filters = await getAllFilters();
   return filters.filter((f) => {
     if (!f.criteria || !f.criteria.from) return false;
-    return (f.action?.addLabelIds || []).includes(screenoutLabelId);
+    return (f.action?.addLabelIds || []).includes(allowedLabelId);
   });
-}
-
-/** Find all allow filters (filters that remove Screener label with a from: criteria) */
-async function getAllAllowFilters(screenoutLabelId, screenerLabelId, filters) {
-  if (!screenoutLabelId) screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
-  if (!screenerLabelId) screenerLabelId = await ensureLabel(LABEL_SCREENER);
-  if (!filters) filters = await getAllFilters();
-  return filters.filter((f) => {
-    if (!f.criteria || !f.criteria.from) return false;
-    const removeIds = f.action?.removeLabelIds || [];
-    const addIds = f.action?.addLabelIds || [];
-    // Allow filter: removes Screener label but doesn't add Screenout
-    return removeIds.includes(screenerLabelId) && !addIds.includes(screenoutLabelId);
-  });
-}
-
-async function getScreenedOutEmails() {
-  const filters = await getAllScreenoutFilters();
-  return filters.map((f) => f.criteria.from.toLowerCase());
 }
 
 async function getAllowedEmails() {
-  const [screenoutLabelId, screenerLabelId] = await Promise.all([
-    ensureLabel(LABEL_SCREENOUT),
-    ensureLabel(LABEL_SCREENER),
-  ]);
-  const filters = await getAllAllowFilters(screenoutLabelId, screenerLabelId);
+  const allowedLabelId = await ensureLabel(LABEL_ALLOWED);
+  const filters = await getAllAllowFilters(allowedLabelId);
   return filters.map((f) => f.criteria.from.toLowerCase());
 }
 
@@ -329,7 +305,6 @@ async function createDefaultRoutingFilter() {
       criteria: { query },
       action: {
         addLabelIds: [screenerLabelId],
-        removeLabelIds: ['INBOX'],
       },
     }),
   });
@@ -351,54 +326,26 @@ async function removeDefaultRoutingFilter() {
 // ============================================================
 
 /**
- * Create an allow filter: counteracts the default routing filter for this sender.
- * Gmail filters API doesn't allow 'INBOX' in addLabelIds, so the allow filter
- * removes the Screener label (counteracting the default filter that adds it).
- * INBOX restoration for new mail is handled by the periodic allowed-senders sweep.
- * Existing messages are swept to INBOX immediately in handleAllow().
+ * Create an allow filter: marks this sender as allowed by adding the Allowed label.
+ * Gmail filters API only allows system labels in removeLabelIds, so we can't
+ * remove Screener via filter. Instead, we add the Allowed label and sweep
+ * to remove Screener from existing messages in handleAllow().
  */
-async function createAllowFilter(target, existingAllowFilters, screenerLabelId) {
+async function createAllowFilter(target, existingAllowFilters, allowedLabelId) {
   // Check if allow filter already exists
   if (existingAllowFilters) {
     const existing = await findFilterByFrom(existingAllowFilters, target);
     if (existing) return existing.id;
   }
 
-  if (!screenerLabelId) screenerLabelId = await ensureLabel(LABEL_SCREENER);
+  if (!allowedLabelId) allowedLabelId = await ensureLabel(LABEL_ALLOWED);
 
   const filter = await gmailFetch('/settings/filters', {
     method: 'POST',
     body: JSON.stringify({
       criteria: { from: target },
       action: {
-        removeLabelIds: [screenerLabelId],
-      },
-    }),
-  });
-  invalidateFiltersCache();
-  return filter.id;
-}
-
-/**
- * Create a screenout filter: adds Screenout, removes INBOX.
- * Note: Gmail filters API only allows system labels in removeLabelIds,
- * so Screener label removal is handled via sweeps.
- */
-async function createScreenoutFilter(target, screenoutLabelId, existingScreenoutFilters) {
-  if (!screenoutLabelId) screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
-
-  if (existingScreenoutFilters) {
-    const existing = await findFilterByFrom(existingScreenoutFilters, target);
-    if (existing) return existing.id;
-  }
-
-  const filter = await gmailFetch('/settings/filters', {
-    method: 'POST',
-    body: JSON.stringify({
-      criteria: { from: target },
-      action: {
-        addLabelIds: [screenoutLabelId],
-        removeLabelIds: ['INBOX'],
+        addLabelIds: [allowedLabelId],
       },
     }),
   });
@@ -451,7 +398,6 @@ async function enableScreenerMode(sweepInbox) {
 
   await createDefaultRoutingFilter();
   await saveSettings({ screenerEnabled: true });
-  await updateSweepAlarm();
 
   let sweepResult = null;
   if (sweepInbox) {
@@ -460,7 +406,7 @@ async function enableScreenerMode(sweepInbox) {
     sweepResult = await sweepMessages(
       query,
       [screenerLabelId],
-      ['INBOX'],
+      [],
       settings.sweepCap || DEFAULT_SWEEP_CAP
     );
   }
@@ -471,7 +417,6 @@ async function enableScreenerMode(sweepInbox) {
 async function disableScreenerMode(restoreToInbox) {
   await removeDefaultRoutingFilter();
   await saveSettings({ screenerEnabled: false });
-  await updateSweepAlarm();
 
   let sweepResult = null;
   if (restoreToInbox) {
@@ -479,7 +424,7 @@ async function disableScreenerMode(restoreToInbox) {
     const settings = await getSettings();
     sweepResult = await sweepMessages(
       `label:${LABEL_SCREENER}`,
-      ['INBOX'],
+      [],
       [screenerLabelId],
       settings.sweepCap || DEFAULT_SWEEP_CAP
     );
@@ -489,136 +434,63 @@ async function disableScreenerMode(restoreToInbox) {
 }
 
 // ============================================================
-// Action handlers: Allow, Screen Out
+// Action handlers: Allow
 // ============================================================
 
 async function handleAllow(target) {
-  // Fetch labels and filters once upfront
-  const [screenerLabelId, screenoutLabelId, filters] = await Promise.all([
+  const [screenerLabelId, allowedLabelId, filters] = await Promise.all([
     ensureLabel(LABEL_SCREENER),
-    ensureLabel(LABEL_SCREENOUT),
+    ensureLabel(LABEL_ALLOWED),
     getAllFilters(),
   ]);
 
-  const screenoutFilters = await getAllScreenoutFilters(screenoutLabelId, filters);
-  const allowFilters = await getAllAllowFilters(screenoutLabelId, screenerLabelId, filters);
+  const allowFilters = await getAllAllowFilters(allowedLabelId, filters);
+  const filterId = await createAllowFilter(target, allowFilters, allowedLabelId);
 
-  const existingScreenout = await findFilterByFrom(screenoutFilters, target);
-  if (existingScreenout) await deleteFilter(existingScreenout.id);
-
-  const filterId = await createAllowFilter(target, allowFilters, screenerLabelId);
-
-  // Sweep both labels in parallel
-  const [sweep] = await Promise.all([
-    sweepMessages(`from:${target} label:${LABEL_SCREENER}`, ['INBOX'], [screenerLabelId], 500),
-    sweepMessages(`from:${target} label:${LABEL_SCREENOUT}`, ['INBOX'], [screenoutLabelId], 500),
-  ]);
-
-  return { success: true, filterId, movedIds: sweep.ids };
-}
-
-async function handleScreenOut(target) {
-  // Fetch labels and filters once upfront
-  const [screenerLabelId, screenoutLabelId, filters] = await Promise.all([
-    ensureLabel(LABEL_SCREENER),
-    ensureLabel(LABEL_SCREENOUT),
-    getAllFilters(),
-  ]);
-
-  const allowFilters = await getAllAllowFilters(screenoutLabelId, screenerLabelId, filters);
-  const screenoutFilters = await getAllScreenoutFilters(screenoutLabelId, filters);
-
-  const existingAllow = await findFilterByFrom(allowFilters, target);
-  if (existingAllow) await deleteFilter(existingAllow.id);
-
-  const filterId = await createScreenoutFilter(target, screenoutLabelId, screenoutFilters);
-
-  const query = `from:${target} (label:${LABEL_SCREENER} OR in:inbox)`;
+  // Sweep: add Allowed label, remove Screener label
   const sweep = await sweepMessages(
-    query,
-    [screenoutLabelId],
-    ['INBOX', screenerLabelId],
+    `from:${target} label:${LABEL_SCREENER}`,
+    [allowedLabelId],
+    [screenerLabelId],
     500
   );
 
   return { success: true, filterId, movedIds: sweep.ids };
 }
 
-async function handleScreenIn(target) {
-  const [screenoutLabelId, filters] = await Promise.all([
-    ensureLabel(LABEL_SCREENOUT),
-    getAllFilters(),
-  ]);
-
-  const screenoutFilters = await getAllScreenoutFilters(screenoutLabelId, filters);
-  const existing = await findFilterByFrom(screenoutFilters, target);
-  if (existing) await deleteFilter(existing.id);
-
-  const query = `from:${target} label:${LABEL_SCREENOUT}`;
-  const sweep = await sweepMessages(query, ['INBOX'], [screenoutLabelId], 500);
-
-  return { success: true, movedIds: sweep.ids };
-}
-
 async function handleUndoAllow(target, movedIds) {
-  const [screenerLabelId, screenoutLabelId] = await Promise.all([
+  const [screenerLabelId, allowedLabelId] = await Promise.all([
     ensureLabel(LABEL_SCREENER),
-    ensureLabel(LABEL_SCREENOUT),
+    ensureLabel(LABEL_ALLOWED),
   ]);
 
-  const allowFilters = await getAllAllowFilters(screenoutLabelId, screenerLabelId);
+  const allowFilters = await getAllAllowFilters(allowedLabelId);
   const existing = await findFilterByFrom(allowFilters, target);
   if (existing) await deleteFilter(existing.id);
 
   if (movedIds && movedIds.length > 0) {
-    await modifyMessages(movedIds, [screenerLabelId], ['INBOX']);
+    // Restore Screener label and remove Allowed label
+    await modifyMessages(movedIds, [screenerLabelId], [allowedLabelId]);
   }
-
-  return { success: true };
-}
-
-async function handleUndoScreenOut(target, movedIds) {
-  const [screenerLabelId, screenoutLabelId, filters] = await Promise.all([
-    ensureLabel(LABEL_SCREENER),
-    ensureLabel(LABEL_SCREENOUT),
-    getAllFilters(),
-  ]);
-
-  const screenoutFilters = await getAllScreenoutFilters(screenoutLabelId, filters);
-  const existing = await findFilterByFrom(screenoutFilters, target);
-  if (existing) await deleteFilter(existing.id);
-
-  if (movedIds && movedIds.length > 0) {
-    await modifyMessages(movedIds, [screenerLabelId], [screenoutLabelId]);
-  }
-
-  return { success: true };
-}
-
-async function handleRemoveScreenedOut(target) {
-  const [screenoutLabelId, filters] = await Promise.all([
-    ensureLabel(LABEL_SCREENOUT),
-    getAllFilters(),
-  ]);
-
-  const screenoutFilters = await getAllScreenoutFilters(screenoutLabelId, filters);
-  const existing = await findFilterByFrom(screenoutFilters, target);
-  if (existing) await deleteFilter(existing.id);
-
-  const query = `from:${target} label:${LABEL_SCREENOUT}`;
-  await sweepMessages(query, ['INBOX'], [screenoutLabelId], 500);
 
   return { success: true };
 }
 
 async function handleRemoveAllowed(target) {
-  const [screenoutLabelId, screenerLabelId] = await Promise.all([
-    ensureLabel(LABEL_SCREENOUT),
-    ensureLabel(LABEL_SCREENER),
-  ]);
-  const allowFilters = await getAllAllowFilters(screenoutLabelId, screenerLabelId);
+  const allowedLabelId = await ensureLabel(LABEL_ALLOWED);
+  const allowFilters = await getAllAllowFilters(allowedLabelId);
   const existing = await findFilterByFrom(allowFilters, target);
   if (existing) await deleteFilter(existing.id);
+
+  // Remove the Allowed label from existing messages, restore Screener
+  const screenerLabelId = await ensureLabel(LABEL_SCREENER);
+  await sweepMessages(
+    `from:${target} label:${LABEL_ALLOWED}`,
+    [screenerLabelId],
+    [allowedLabelId],
+    500
+  );
+
   return { success: true };
 }
 
@@ -645,70 +517,6 @@ async function continueSweep(query, addLabelIds, removeLabelIds) {
   const settings = await getSettings();
   return sweepMessages(query, addLabelIds, removeLabelIds, settings.sweepCap || DEFAULT_SWEEP_CAP);
 }
-
-// ============================================================
-// Periodic sweep for allowed senders
-// ============================================================
-// Because Gmail filters can't add INBOX via addLabelIds, the allow filter
-// only removes the Screener label. New mail from allowed senders ends up
-// with no INBOX and no Screener (in "All Mail" limbo). This periodic sweep
-// finds those messages and moves them to INBOX.
-
-const ALLOWED_SWEEP_ALARM = 'allowedSendersSweep';
-
-const ALLOWED_CACHE_TTL = 60 * 1000; // 1 minute
-
-async function sweepAllowedSenders() {
-  const settings = await getSettings();
-  if (!settings.screenerEnabled) return;
-
-  try {
-    // Use cached allowed emails to avoid extra API calls
-    let allowedEmails;
-    if (cachedAllowedEmails && (Date.now() - cachedAllowedEmails.ts) < ALLOWED_CACHE_TTL) {
-      allowedEmails = cachedAllowedEmails.emails;
-    } else {
-      allowedEmails = await getAllowedEmails();
-      cachedAllowedEmails = { emails: allowedEmails, ts: Date.now() };
-    }
-    if (allowedEmails.length === 0) return;
-
-    // Build a query to find messages from allowed senders that are
-    // not in INBOX and not in Screener and not in Screenout (i.e., in limbo)
-    // Process in batches to avoid query length limits
-    const batchSize = 20;
-    for (let i = 0; i < allowedEmails.length; i += batchSize) {
-      const batch = allowedEmails.slice(i, i + batchSize);
-      const fromClause = batch.map((e) => `from:${e}`).join(' OR ');
-      const query = `(${fromClause}) -in:inbox -in:trash -in:spam -label:${LABEL_SCREENER} -label:${LABEL_SCREENOUT} newer_than:1d`;
-      await sweepMessages(query, ['INBOX'], [], 100);
-    }
-    console.log(`[Gmail Screener] Allowed-senders sweep done (${allowedEmails.length} senders)`);
-  } catch (err) {
-    console.warn('[Gmail Screener] Allowed-senders sweep failed:', err.message);
-  }
-}
-
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === ALLOWED_SWEEP_ALARM) {
-    sweepAllowedSenders();
-  }
-});
-
-// Start/stop the periodic sweep alarm based on screener state
-async function updateSweepAlarm() {
-  const settings = await getSettings();
-  if (settings.screenerEnabled) {
-    chrome.alarms.create(ALLOWED_SWEEP_ALARM, { periodInMinutes: 5 });
-    console.log('[Gmail Screener] Allowed-senders sweep alarm started');
-  } else {
-    chrome.alarms.clear(ALLOWED_SWEEP_ALARM);
-    console.log('[Gmail Screener] Allowed-senders sweep alarm stopped');
-  }
-}
-
-// On service worker startup, configure the alarm
-updateSweepAlarm();
 
 // ============================================================
 // Message handler
@@ -758,12 +566,6 @@ async function handleMessage(msg) {
     // --- Triage actions ---
     case 'ALLOW':
       return handleAllow((msg.target || msg.email).toLowerCase());
-
-    case 'SCREEN_OUT':
-      return handleScreenOut((msg.target || msg.email).toLowerCase());
-
-    case 'SCREEN_IN':
-      return handleScreenIn((msg.target || msg.email).toLowerCase());
 
     // --- Reply Later / Set Aside (thread-based, from main) ---
     case 'REPLY_LATER':
@@ -835,18 +637,9 @@ async function handleMessage(msg) {
     case 'UNDO_ALLOW':
       return handleUndoAllow((msg.target).toLowerCase(), msg.movedIds);
 
-    case 'UNDO_SCREEN_OUT':
-      return handleUndoScreenOut((msg.target).toLowerCase(), msg.movedIds);
-
     // --- Lists ---
-    case 'GET_SCREENED_OUT':
-      return { emails: await getScreenedOutEmails() };
-
     case 'GET_ALLOWED':
       return { emails: await getAllowedEmails() };
-
-    case 'REMOVE_SCREENED_OUT':
-      return handleRemoveScreenedOut((msg.email || '').toLowerCase());
 
     case 'REMOVE_ALLOWED':
       return handleRemoveAllowed((msg.email || '').toLowerCase());

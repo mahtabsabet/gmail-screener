@@ -15,8 +15,7 @@
 
   function getCurrentView() {
     const hash = location.hash || '';
-    if (/label\/Screener\b/i.test(hash) && !/label\/Screenout/i.test(hash)) return 'screener';
-    if (/label\/Screenout/i.test(hash)) return 'screenout';
+    if (/label\/Screener\b/i.test(hash)) return 'screener';
     if (/label\/SetAside/i.test(hash)) return 'setaside';
     if (/label\/ReplyLater/i.test(hash)) return 'replylater';
     if (
@@ -152,13 +151,15 @@
   }
 
   // SVG icons
-  const ICON_BLOCK = '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9A7.902 7.902 0 014 12zm8 8c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1A7.902 7.902 0 0120 12c0 4.42-3.58 8-8 8z"/></svg>';
   const ICON_PERSON = '<svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>';
   const ICON_GLOBE = '<svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95a15.65 15.65 0 00-1.38-3.56A8.03 8.03 0 0118.92 8zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2s.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.987 7.987 0 015.08 16zm2.95-8H5.08a7.987 7.987 0 014.33-3.56A15.65 15.65 0 008.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2s.07-1.35.16-2h4.68c.09.65.16 1.32.16 2s-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 01-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2s-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z"/></svg>';
   const ICON_CHECK = '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+  const ICON_REMOVE = '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11H7v-2h10v2z"/></svg>';
   const ICON_SCHEDULE = '<svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>';
   const ICON_BOOKMARK = '<svg viewBox="0 0 24 24"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>';
   const ICON_TRIAGE = '<svg viewBox="0 0 24 24"><path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg>';
+  const ICON_INBOX = '<svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5v-3h3.56c.69 1.19 1.97 2 3.45 2s2.75-.81 3.45-2H19v3zm0-5h-4.99c0 1.1-.9 2-2 2s-2-.9-2-2H5V5h14v9z"/></svg>';
+  const ICON_FILTER = '<svg viewBox="0 0 24 24"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>';
 
   // ============================================================
   // Dropdown menus
@@ -194,7 +195,7 @@
   }
 
   // ============================================================
-  // UI injection - context-aware buttons per view (Screener Mode)
+  // UI injection - context-aware buttons per view
   // ============================================================
 
   function injectButtons(row, email, view) {
@@ -205,28 +206,31 @@
     container.className = 'gs-trigger';
 
     if (view === 'screener') {
-      // Screener view: Allow + Screen out + Set Aside
+      // Screener label view: Allow button
       const allowBtn = createIconBtn(ICON_CHECK, 'Allow sender', 'gs-btn-allow', () => {
-        showScreenerDropdown(row, email, domain, 'allow', container);
-      });
-      const blockBtn = createIconBtn(ICON_BLOCK, 'Screen out sender', 'gs-btn-screenout', () => {
-        showScreenerDropdown(row, email, domain, 'screenout', container);
+        showAllowDropdown(row, email, domain, container);
       });
       container.appendChild(allowBtn);
-      container.appendChild(blockBtn);
-    } else if (view === 'screenout') {
-      // Screenout view: Screen in (unblock)
-      const triggerBtn = createIconBtn(ICON_CHECK, 'Screen in sender', 'gs-btn-allow', () => {
-        showScreenerDropdown(row, email, domain, 'screenin', container);
-      });
-      container.appendChild(triggerBtn);
     } else if (view === 'inbox') {
-      // Inbox view: Screen out
-      const blockBtn = createIconBtn(ICON_BLOCK, 'Screen out sender', 'gs-btn-screenout', () => {
-        showScreenerDropdown(row, email, domain, 'screenout', container);
-      });
-      container.appendChild(blockBtn);
+      // Inbox view: button depends on filter mode
+      if (gsFilterMode === 'screened') {
+        // Screened In tab: Remove (un-allow) button
+        const removeBtn = createIconBtn(ICON_REMOVE, 'Remove sender', 'gs-btn-remove', () => {
+          showRemoveDropdown(row, email, domain, container);
+        });
+        container.appendChild(removeBtn);
+      } else if (gsFilterMode === 'screener') {
+        // Screener tab: Allow button
+        const allowBtn = createIconBtn(ICON_CHECK, 'Allow sender', 'gs-btn-allow', () => {
+          showAllowDropdown(row, email, domain, container);
+        });
+        container.appendChild(allowBtn);
+      }
+      // All Mail tab (gsFilterMode === null): no buttons
     }
+
+    // Only append if we added buttons
+    if (container.children.length === 0) return;
 
     const senderCell =
       row.querySelector('td.yX') ||
@@ -290,53 +294,77 @@
   }
 
   // ============================================================
-  // Screener dropdown (Allow / Screen out / Screen in)
+  // Allow dropdown
   // ============================================================
 
-  function showScreenerDropdown(row, email, domain, action, anchor) {
+  function showAllowDropdown(row, email, domain, anchor) {
     closeActiveDropdown();
     closeActiveTriageDropdown();
 
     const dropdown = document.createElement('div');
     dropdown.className = 'gs-dropdown';
 
-    let headerLabel, headerIcon;
-    if (action === 'allow') {
-      headerLabel = 'ALLOW'; headerIcon = ICON_CHECK;
-    } else if (action === 'screenout') {
-      headerLabel = 'SCREEN OUT'; headerIcon = ICON_BLOCK;
-    } else {
-      headerLabel = 'SCREEN IN'; headerIcon = ICON_CHECK;
-    }
-
     const header = document.createElement('div');
     header.className = 'gs-dropdown-header';
-    header.innerHTML = headerIcon + ' ' + headerLabel;
+    header.innerHTML = ICON_CHECK + ' ALLOW';
     dropdown.appendChild(header);
 
     addDivider(dropdown);
 
-    const senderLabel = action === 'allow' ? 'Allow sender'
-      : action === 'screenin' ? 'Screen in sender'
-      : 'Screen out sender';
-    const senderItem = createDropdownItem(ICON_PERSON, senderLabel, email, () => {
+    const senderItem = createDropdownItem(ICON_PERSON, 'Allow sender', email, () => {
       closeActiveDropdown();
-      if (action === 'allow') doAllow(email, row);
-      else if (action === 'screenin') doScreenIn(email, row);
-      else doScreenOut(email, row);
+      doAllow(email, row);
     });
     dropdown.appendChild(senderItem);
 
     if (domain) {
       addDivider(dropdown);
-      const domainLabel = action === 'allow' ? 'Allow domain'
-        : action === 'screenin' ? 'Screen in domain'
-        : 'Screen out domain';
-      const domainItem = createDropdownItem(ICON_GLOBE, domainLabel, 'All from @' + domain, () => {
+      const domainItem = createDropdownItem(ICON_GLOBE, 'Allow domain', 'All from @' + domain, () => {
         closeActiveDropdown();
-        if (action === 'allow') doAllow('@' + domain, row);
-        else if (action === 'screenin') doScreenIn('@' + domain, row);
-        else doScreenOut('@' + domain, row);
+        doAllow('@' + domain, row);
+      });
+      dropdown.appendChild(domainItem);
+    }
+
+    anchor.style.position = 'relative';
+    anchor.appendChild(dropdown);
+    activeDropdown = dropdown;
+
+    setTimeout(() => {
+      document.addEventListener('click', onDocumentClick, true);
+      document.addEventListener('keydown', onEscapeKey, true);
+    }, 0);
+  }
+
+  // ============================================================
+  // Remove (un-allow) dropdown
+  // ============================================================
+
+  function showRemoveDropdown(row, email, domain, anchor) {
+    closeActiveDropdown();
+    closeActiveTriageDropdown();
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'gs-dropdown';
+
+    const header = document.createElement('div');
+    header.className = 'gs-dropdown-header';
+    header.innerHTML = ICON_REMOVE + ' REMOVE';
+    dropdown.appendChild(header);
+
+    addDivider(dropdown);
+
+    const senderItem = createDropdownItem(ICON_PERSON, 'Remove sender', email, () => {
+      closeActiveDropdown();
+      doRemoveAllowed(email, row);
+    });
+    dropdown.appendChild(senderItem);
+
+    if (domain) {
+      addDivider(dropdown);
+      const domainItem = createDropdownItem(ICON_GLOBE, 'Remove domain', 'All from @' + domain, () => {
+        closeActiveDropdown();
+        doRemoveAllowed('@' + domain, row);
       });
       dropdown.appendChild(domainItem);
     }
@@ -522,6 +550,16 @@
     return hidden;
   }
 
+  function findMatchingRows(target) {
+    const all = document.querySelectorAll('tr.zA');
+    const matched = [];
+    for (const r of all) {
+      const rowEmail = extractSenderEmail(r);
+      if (rowMatchesTarget(rowEmail, target)) matched.push(r);
+    }
+    return matched;
+  }
+
   function showRows(hiddenRows) {
     for (const r of hiddenRows) {
       r.style.display = '';
@@ -536,7 +574,9 @@
     try {
       const resp = await chrome.runtime.sendMessage({ type: 'ALLOW', target });
       if (resp && resp.success) {
-        const hiddenRows = hideMatchingRows(target);
+        invalidateAllowedCache();
+        await filterInboxRows();
+        const hiddenRows = findMatchingRows(target);
         showToast(`Allowed ${target}`, 'success', {
           action: 'Undo',
           onAction: () => undoAllow(target, hiddenRows, resp.movedIds),
@@ -551,39 +591,16 @@
     }
   }
 
-  async function doScreenOut(target, row) {
+  async function doRemoveAllowed(target, row) {
     if (!(await ensureAuth())) return;
     disableRowBtns(row);
 
     try {
-      const resp = await chrome.runtime.sendMessage({ type: 'SCREEN_OUT', target });
+      const resp = await chrome.runtime.sendMessage({ type: 'REMOVE_ALLOWED', email: target });
       if (resp && resp.success) {
-        const hiddenRows = hideMatchingRows(target);
-        refreshPanelCount();
-        showToast(`Screened out ${target}`, 'success', {
-          action: 'Undo',
-          onAction: () => undoScreenOut(target, hiddenRows, resp.movedIds),
-        });
-      } else {
-        showToast(`Failed: ${resp?.error || 'Unknown error'}`, 'error');
-        enableRowBtns(row);
-      }
-    } catch (err) {
-      showToast(`Error: ${err.message}`, 'error');
-      enableRowBtns(row);
-    }
-  }
-
-  async function doScreenIn(target, row) {
-    if (!(await ensureAuth())) return;
-    disableRowBtns(row);
-
-    try {
-      const resp = await chrome.runtime.sendMessage({ type: 'SCREEN_IN', target });
-      if (resp && resp.success) {
-        hideMatchingRows(target);
-        refreshPanelCount();
-        showToast(`Screened in ${target} — moved to inbox`, 'success');
+        invalidateAllowedCache();
+        await filterInboxRows();
+        showToast(`Removed ${target}`, 'success');
       } else {
         showToast(`Failed: ${resp?.error || 'Unknown error'}`, 'error');
         enableRowBtns(row);
@@ -598,22 +615,8 @@
     try {
       const resp = await chrome.runtime.sendMessage({ type: 'UNDO_ALLOW', target, movedIds });
       if (resp && resp.success) {
+        invalidateAllowedCache();
         showRows(hiddenRows);
-        showToast(`Undo: ${target} back in Screener`, 'success');
-      } else {
-        showToast('Undo failed', 'error');
-      }
-    } catch (err) {
-      showToast(`Undo error: ${err.message}`, 'error');
-    }
-  }
-
-  async function undoScreenOut(target, hiddenRows, movedIds) {
-    try {
-      const resp = await chrome.runtime.sendMessage({ type: 'UNDO_SCREEN_OUT', target, movedIds });
-      if (resp && resp.success) {
-        showRows(hiddenRows);
-        refreshPanelCount();
         showToast(`Undo: ${target} back in Screener`, 'success');
       } else {
         showToast('Undo failed', 'error');
@@ -667,141 +670,6 @@
       toast.classList.add('gs-toast-dismiss');
       setTimeout(() => toast.remove(), 300);
     }, timeout);
-  }
-
-  // ============================================================
-  // Screened-out panel (in-Gmail UI) - from main
-  // ============================================================
-
-  let panelEl = null;
-  let panelTabEl = null;
-  let overlayEl = null;
-
-  function createPanel() {
-    if (panelEl) return;
-
-    panelTabEl = document.createElement('div');
-    panelTabEl.className = 'gs-panel-tab';
-    panelTabEl.innerHTML = 'Screened out <span class="gs-panel-tab-count" id="gs-tab-count">0</span>';
-    panelTabEl.addEventListener('click', togglePanel);
-    document.body.appendChild(panelTabEl);
-
-    overlayEl = document.createElement('div');
-    overlayEl.className = 'gs-panel-overlay';
-    overlayEl.addEventListener('click', closePanel);
-    document.body.appendChild(overlayEl);
-
-    panelEl = document.createElement('div');
-    panelEl.className = 'gs-panel';
-    panelEl.innerHTML =
-      '<div class="gs-panel-header">' +
-        '<span class="gs-panel-title">Screened out <span class="gs-panel-count" id="gs-panel-count">0</span></span>' +
-        '<button class="gs-panel-close" title="Close">\u00d7</button>' +
-      '</div>' +
-      '<div class="gs-panel-list" id="gs-panel-list">' +
-        '<div class="gs-panel-empty">Loading\u2026</div>' +
-      '</div>' +
-      '<div class="gs-panel-footer">' +
-        '<a id="gs-panel-screenout-link">Open Screenout folder</a>' +
-      '</div>';
-    document.body.appendChild(panelEl);
-
-    panelEl.querySelector('.gs-panel-close').addEventListener('click', closePanel);
-    panelEl.querySelector('#gs-panel-screenout-link').addEventListener('click', (e) => {
-      e.preventDefault();
-      window.location.hash = '#label/Screenout';
-      closePanel();
-    });
-
-    refreshPanelCount();
-  }
-
-  function togglePanel() {
-    if (panelEl.classList.contains('gs-panel-open')) {
-      closePanel();
-    } else {
-      openPanel();
-    }
-  }
-
-  async function openPanel() {
-    panelEl.classList.add('gs-panel-open');
-    overlayEl.classList.add('gs-panel-overlay-visible');
-    await refreshPanelList();
-  }
-
-  function closePanel() {
-    panelEl.classList.remove('gs-panel-open');
-    overlayEl.classList.remove('gs-panel-overlay-visible');
-  }
-
-  function updatePanelCount(count) {
-    const tabCount = document.getElementById('gs-tab-count');
-    if (tabCount) tabCount.textContent = count;
-  }
-
-  async function refreshPanelCount() {
-    try {
-      const resp = await chrome.runtime.sendMessage({ type: 'GET_SCREENED_OUT' });
-      updatePanelCount(resp && resp.emails ? resp.emails.length : 0);
-    } catch (err) {
-      console.warn('[Gmail Screener] refreshPanelCount failed:', err);
-    }
-  }
-
-  async function refreshPanelList() {
-    const listEl = document.getElementById('gs-panel-list');
-    const countEl = document.getElementById('gs-panel-count');
-    const tabCount = document.getElementById('gs-tab-count');
-    listEl.innerHTML = '<div class="gs-panel-empty">Loading\u2026</div>';
-
-    try {
-      const resp = await chrome.runtime.sendMessage({ type: 'GET_SCREENED_OUT' });
-      const emails = resp && resp.emails ? resp.emails : [];
-      countEl.textContent = emails.length;
-      if (tabCount) tabCount.textContent = emails.length;
-
-      if (emails.length === 0) {
-        listEl.innerHTML = '<div class="gs-panel-empty">No screened-out senders yet.</div>';
-        return;
-      }
-
-      listEl.innerHTML = '';
-      const sorted = [...emails].sort();
-      for (const email of sorted) {
-        const row = document.createElement('div');
-        row.className = 'gs-panel-row';
-
-        const label = document.createElement('span');
-        label.className = 'gs-panel-email';
-        if (email.startsWith('@')) label.classList.add('gs-panel-domain');
-        label.textContent = email;
-        row.appendChild(label);
-
-        const removeBtn = document.createElement('button');
-        removeBtn.className = 'gs-panel-remove';
-        removeBtn.textContent = 'Remove';
-        removeBtn.title = 'Delete Gmail filter for ' + email;
-        removeBtn.addEventListener('click', async () => {
-          removeBtn.disabled = true;
-          removeBtn.textContent = '\u2026';
-          try {
-            await chrome.runtime.sendMessage({ type: 'REMOVE_SCREENED_OUT', email });
-            await refreshPanelList();
-            location.reload();
-          } catch (err) {
-            console.warn('[Gmail Screener] Remove sender failed:', err);
-            removeBtn.disabled = false;
-            removeBtn.textContent = 'Remove';
-          }
-        });
-        row.appendChild(removeBtn);
-
-        listEl.appendChild(row);
-      }
-    } catch (err) {
-      listEl.innerHTML = '<div class="gs-panel-empty">Failed to load.</div>';
-    }
   }
 
   // ============================================================
@@ -1008,7 +876,20 @@
     if (!email) return;
 
     const view = getCurrentView();
-    if (view === 'screener' || view === 'screenout' || view === 'inbox') {
+    if (view === 'screener' || view === 'inbox') {
+      // Remove stale buttons if filter mode changed
+      const existing = row.querySelector('.gs-trigger');
+      if (existing) {
+        const hasAllow = existing.querySelector('.gs-btn-allow');
+        const hasRemove = existing.querySelector('.gs-btn-remove');
+        const needsAllow = gsFilterMode === 'screener' || view === 'screener';
+        const needsRemove = gsFilterMode === 'screened';
+        if ((needsAllow && !hasAllow) || (needsRemove && !hasRemove) ||
+            (!needsAllow && !needsRemove && (hasAllow || hasRemove))) {
+          existing.remove();
+        }
+      }
+
       if (!row.querySelector('.gs-trigger')) {
         injectButtons(row, email, view);
       }
@@ -1032,6 +913,12 @@
     for (const row of getVisibleRows()) {
       processRow(row);
     }
+    // Re-apply filter if in screened or screener mode (new rows may have appeared)
+    if (gsFilterMode === 'screened' || gsFilterMode === 'screener') {
+      filterInboxRows();
+    }
+    // Ensure tabs are injected
+    injectTabs();
   }
 
   // ============================================================
@@ -1064,9 +951,238 @@
     setInterval(() => {
       if (location.href !== lastUrl) {
         lastUrl = location.href;
-        setTimeout(processAllVisible, 1000);
+        // Reset filter mode on navigation
+        if (gsFilterMode) clearInboxFilter();
+        setTimeout(() => {
+          processAllVisible();
+          injectTabs();
+          // Auto-activate Screened In when navigating back to inbox
+          if (getCurrentView() === 'inbox' && !gsFilterMode) {
+            activateScreenedFilter();
+          }
+        }, 1000);
       }
     }, 500);
+  }
+
+  // ============================================================
+  // Custom tabs + inbox filtering
+  // ============================================================
+
+  let gsFilterMode = null; // null = All Mail, 'screened' = Screened In, 'screener' = Screener
+  let gsAllowedCache = null; // { emails: Set, ts }
+  const GS_ALLOWED_CACHE_TTL = 30 * 1000; // 30s
+  let screenedTabEl = null;
+  let screenerTabEl = null;
+  let allMailTabEl = null;
+
+  /**
+   * Find Gmail's category tab bar and inject our custom tabs.
+   * Hides native Gmail tabs and shows: Screened In, Screener, All Mail.
+   *
+   * Gmail's tab DOM structure:
+   *   tr[role="tablist"]                    ← the tab row
+   *     td.aRz[role="heading"]             ← each tab cell (Primary, etc.)
+   *       div.aAy[role="tab"]              ← clickable tab
+   *     td.aRy                             ← "+" button cell
+   */
+  function injectTabs() {
+    if (!screenerEnabled) return;
+    const view = getCurrentView();
+    if (view !== 'inbox') return;
+
+    // Already injected and still in DOM?
+    if (screenedTabEl && document.contains(screenedTabEl)) return;
+
+    // Find the tab row: tr[role="tablist"]
+    const tabRow = document.querySelector('tr[role="tablist"]');
+    if (!tabRow) return;
+
+    // Hide all native Gmail tabs
+    const nativeCells = tabRow.querySelectorAll('td.aRz, td[role="heading"], td.aRy');
+    for (const cell of nativeCells) {
+      if (!cell.classList.contains('gs-screened-td') &&
+          !cell.classList.contains('gs-screener-td') &&
+          !cell.classList.contains('gs-allmail-td')) {
+        cell.style.display = 'none';
+      }
+    }
+
+    // Create the three tabs
+    screenedTabEl = createTab('gs-screened-td', 'gs-screened-tab', ICON_CHECK, 'Screened In', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      activateScreenedFilter();
+    });
+
+    screenerTabEl = createTab('gs-screener-td', 'gs-screener-tab', ICON_FILTER, 'Screener', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      activateScreenerFilter();
+    });
+
+    allMailTabEl = createTab('gs-allmail-td', 'gs-allmail-tab', ICON_INBOX, 'All Mail', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      clearInboxFilter();
+    });
+
+    // Insert our tabs at the beginning
+    const firstCell = tabRow.querySelector('td');
+    tabRow.insertBefore(allMailTabEl, firstCell);
+    tabRow.insertBefore(screenerTabEl, allMailTabEl);
+    tabRow.insertBefore(screenedTabEl, screenerTabEl);
+
+    // Auto-activate Screened In on first injection
+    if (!gsFilterMode) {
+      activateScreenedFilter();
+    }
+  }
+
+  function createTab(tdClass, tabClass, icon, label, onClick) {
+    const td = document.createElement('td');
+    td.className = 'aRz J-KU ' + tdClass;
+    td.setAttribute('role', 'heading');
+    td.setAttribute('aria-level', '3');
+    td.style.userSelect = 'none';
+
+    const tabDiv = document.createElement('div');
+    tabDiv.className = tabClass;
+    tabDiv.setAttribute('role', 'tab');
+    tabDiv.setAttribute('tabindex', '0');
+    tabDiv.setAttribute('aria-selected', 'false');
+    tabDiv.setAttribute('aria-label', label);
+    tabDiv.style.userSelect = 'none';
+
+    tabDiv.innerHTML =
+      '<div class="gs-tab-inner">' +
+        '<span class="gs-tab-icon">' + icon + '</span>' +
+        '<span class="gs-tab-label">' + label + '</span>' +
+      '</div>';
+
+    td.appendChild(tabDiv);
+    tabDiv.addEventListener('click', onClick);
+
+    return td;
+  }
+
+  async function getOrFetchAllowed() {
+    if (gsAllowedCache && (Date.now() - gsAllowedCache.ts) < GS_ALLOWED_CACHE_TTL) {
+      return gsAllowedCache.emails;
+    }
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: 'GET_ALLOWED' });
+      const emails = new Set((resp?.emails || []).map((e) => e.toLowerCase()));
+      gsAllowedCache = { emails, ts: Date.now() };
+      return emails;
+    } catch (err) {
+      console.warn('[Gmail Screener] Failed to fetch allowed list:', err);
+      return gsAllowedCache?.emails || new Set();
+    }
+  }
+
+  function invalidateAllowedCache() {
+    gsAllowedCache = null;
+  }
+
+  function setActiveTab(activeEl) {
+    // Deactivate all custom tabs
+    for (const el of [screenedTabEl, screenerTabEl, allMailTabEl]) {
+      if (!el) continue;
+      const tabDiv = el.querySelector('div[role="tab"]');
+      if (tabDiv) {
+        tabDiv.classList.remove('gs-tab-active');
+        tabDiv.setAttribute('aria-selected', 'false');
+      }
+    }
+    // Activate the specified tab
+    if (activeEl) {
+      const tabDiv = activeEl.querySelector('div[role="tab"]');
+      if (tabDiv) {
+        tabDiv.classList.add('gs-tab-active');
+        tabDiv.setAttribute('aria-selected', 'true');
+      }
+    }
+  }
+
+  async function activateScreenedFilter() {
+    gsFilterMode = 'screened';
+    document.body.classList.add('gs-filter-screened');
+    document.body.classList.remove('gs-filter-screener');
+    setActiveTab(screenedTabEl);
+    // Clear stale buttons and re-inject for new mode
+    clearAllTriggerButtons();
+    await filterInboxRows();
+  }
+
+  async function activateScreenerFilter() {
+    gsFilterMode = 'screener';
+    document.body.classList.remove('gs-filter-screened');
+    document.body.classList.add('gs-filter-screener');
+    setActiveTab(screenerTabEl);
+    clearAllTriggerButtons();
+    await filterInboxRows();
+  }
+
+  function clearInboxFilter() {
+    gsFilterMode = null;
+    document.body.classList.remove('gs-filter-screened');
+    document.body.classList.remove('gs-filter-screener');
+    setActiveTab(allMailTabEl);
+
+    // Show all filtered rows
+    const filtered = document.querySelectorAll('tr.gs-filtered');
+    for (const row of filtered) {
+      row.style.display = '';
+      row.classList.remove('gs-filtered');
+    }
+
+    // Clear buttons (All Mail has no buttons)
+    clearAllTriggerButtons();
+  }
+
+  function clearAllTriggerButtons() {
+    for (const el of document.querySelectorAll('.gs-trigger')) {
+      el.remove();
+    }
+  }
+
+  async function filterInboxRows() {
+    const allowed = await getOrFetchAllowed();
+
+    for (const row of getVisibleRows()) {
+      const email = extractSenderEmail(row);
+      if (!email) continue;
+
+      const emailLower = email.toLowerCase();
+      const domain = getDomain(emailLower);
+      const isAllowed = allowed.has(emailLower) || (domain && allowed.has('@' + domain));
+
+      if (gsFilterMode === 'screened') {
+        // Screened In: show only allowed senders
+        if (isAllowed) {
+          row.style.display = '';
+          row.classList.remove('gs-filtered');
+        } else {
+          row.style.display = 'none';
+          row.classList.add('gs-filtered');
+        }
+      } else if (gsFilterMode === 'screener') {
+        // Screener: show only non-allowed senders
+        if (!isAllowed) {
+          row.style.display = '';
+          row.classList.remove('gs-filtered');
+        } else {
+          row.style.display = 'none';
+          row.classList.add('gs-filtered');
+        }
+      }
+
+      // Re-inject buttons for visible rows
+      if (row.style.display !== 'none' && !row.querySelector('.gs-trigger')) {
+        processRow(row);
+      }
+    }
   }
 
   // ============================================================
@@ -1076,12 +1192,18 @@
   async function init() {
     await checkAuth();
     await checkScreenerStatus();
-    createPanel();
     createBottomBar();
     startObserver();
     startPeriodicScan();
     watchUrlChanges();
     setTimeout(processAllVisible, 2000);
+    // Gmail's tab bar loads async, retry injection a few times
+    setTimeout(() => {
+      injectTabs();
+    }, 3000);
+    setTimeout(() => {
+      injectTabs();
+    }, 5000);
   }
 
   if (document.readyState === 'loading') {

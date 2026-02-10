@@ -6,11 +6,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const signInBtn = document.getElementById('sign-in-btn');
   const settingsCard = document.getElementById('settings-card');
   const allowedCard = document.getElementById('allowed-card');
-  const screenoutCard = document.getElementById('screenout-card');
   const allowedListEl = document.getElementById('allowed-list');
   const allowedCountEl = document.getElementById('allowed-count');
-  const blockedListEl = document.getElementById('blocked-list');
-  const blockedCountEl = document.getElementById('blocked-count');
   const filterQueryInput = document.getElementById('filter-query');
   const sweepCapInput = document.getElementById('sweep-cap');
   const saveSettingsBtn = document.getElementById('save-settings-btn');
@@ -93,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const resp = await chrome.runtime.sendMessage({ type: 'GET_ALLOWED' });
       const emails = resp && resp.emails ? resp.emails : [];
-      renderList(allowedListEl, allowedCountEl, emails, 'allowed');
+      renderList(allowedListEl, allowedCountEl, emails);
     } catch (err) {
       allowedListEl.innerHTML = '';
       const errDiv = document.createElement('div');
@@ -103,29 +100,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ---- Screened-out senders list ----
-  async function loadBlockedList() {
-    blockedListEl.innerHTML = '<div class="empty-state">Loading&hellip;</div>';
-    try {
-      const resp = await chrome.runtime.sendMessage({ type: 'GET_SCREENED_OUT' });
-      const emails = resp && resp.emails ? resp.emails : [];
-      renderList(blockedListEl, blockedCountEl, emails, 'screenout');
-    } catch (err) {
-      blockedListEl.innerHTML = '';
-      const errDiv = document.createElement('div');
-      errDiv.className = 'empty-state';
-      errDiv.textContent = 'Failed to load: ' + err.message;
-      blockedListEl.appendChild(errDiv);
-    }
-  }
-
-  function renderList(container, countEl, emails, listType) {
+  function renderList(container, countEl, emails) {
     container.innerHTML = '';
     countEl.textContent = emails.length;
 
     if (emails.length === 0) {
       container.innerHTML =
-        '<div class="empty-state">No ' + (listType === 'allowed' ? 'allowed' : 'screened-out') + ' senders.</div>';
+        '<div class="empty-state">No allowed senders.</div>';
       return;
     }
 
@@ -143,17 +124,16 @@ document.addEventListener('DOMContentLoaded', () => {
       removeBtn.className = 'btn btn-sm btn-remove';
       removeBtn.textContent = 'Remove filter';
       removeBtn.title = `Delete the Gmail filter for ${email}`;
-      removeBtn.addEventListener('click', () => removeSender(email, listType));
+      removeBtn.addEventListener('click', () => removeSender(email));
       row.appendChild(removeBtn);
 
       container.appendChild(row);
     }
   }
 
-  async function removeSender(email, listType) {
-    const msgType = listType === 'allowed' ? 'REMOVE_ALLOWED' : 'REMOVE_SCREENED_OUT';
+  async function removeSender(email) {
     try {
-      const resp = await chrome.runtime.sendMessage({ type: msgType, email });
+      const resp = await chrome.runtime.sendMessage({ type: 'REMOVE_ALLOWED', email });
       if (resp && resp.success) {
         await loadAllLists();
         const gmailTabs = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
@@ -167,13 +147,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function loadAllLists() {
-    await Promise.all([loadAllowedList(), loadBlockedList()]);
+    await loadAllowedList();
   }
 
   function showSettings() {
     settingsCard.style.display = 'block';
     allowedCard.style.display = 'block';
-    screenoutCard.style.display = 'block';
   }
 
   // ---- Init ----
@@ -184,8 +163,6 @@ document.addEventListener('DOMContentLoaded', () => {
       loadAllLists();
     } else {
       allowedListEl.innerHTML =
-        '<div class="empty-state">Sign in to view.</div>';
-      blockedListEl.innerHTML =
         '<div class="empty-state">Sign in to view.</div>';
     }
   });
