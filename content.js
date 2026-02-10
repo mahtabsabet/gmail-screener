@@ -3,7 +3,6 @@
 (function () {
   'use strict';
 
-  let processedRows = new WeakSet(); // only used to avoid redundant extractSenderEmail calls
   let observer = null;
   let debounceTimer = null;
   let authenticated = false;
@@ -40,7 +39,8 @@
     try {
       const resp = await chrome.runtime.sendMessage({ type: 'GET_AUTH_STATUS' });
       authenticated = resp && resp.authenticated;
-    } catch (_) {
+    } catch (err) {
+      console.warn('[Gmail Screener] Auth check failed:', err);
       authenticated = false;
     }
     return authenticated;
@@ -103,10 +103,17 @@
       activeDropdown = null;
     }
     document.removeEventListener('click', onDocumentClick, true);
+    document.removeEventListener('keydown', onEscapeKey, true);
   }
 
   function onDocumentClick(e) {
     if (activeDropdown && !activeDropdown.contains(e.target)) {
+      closeActiveDropdown();
+    }
+  }
+
+  function onEscapeKey(e) {
+    if (e.key === 'Escape') {
       closeActiveDropdown();
     }
   }
@@ -153,8 +160,8 @@
     const isScreenout = view === 'screenout';
     const headerLabel = isScreenout ? 'SCREEN IN' : 'SCREEN OUT';
     const headerIcon = isScreenout ? ICON_CHECK : ICON_BLOCK;
-    const senderAction = isScreenout ? 'Unblock sender' : 'Block sender';
-    const domainAction = isScreenout ? 'Unblock domain' : 'Block domain';
+    const senderAction = isScreenout ? 'Screen in sender' : 'Screen out sender';
+    const domainAction = isScreenout ? 'Screen in domain' : 'Screen out domain';
 
     const dropdown = document.createElement('div');
     dropdown.className = 'gs-dropdown';
@@ -183,9 +190,9 @@
       e.stopImmediatePropagation();
       closeActiveDropdown();
       if (isScreenout) {
-        handleScreenIn(email, row, email);
+        handleScreenIn(email, row);
       } else {
-        handleScreenOut(email, row, email);
+        handleScreenOut(email, row);
       }
     });
     dropdown.appendChild(senderItem);
@@ -208,9 +215,9 @@
         e.stopImmediatePropagation();
         closeActiveDropdown();
         if (isScreenout) {
-          handleScreenIn('@' + domain, row, email);
+          handleScreenIn('@' + domain, row);
         } else {
-          handleScreenOut('@' + domain, row, email);
+          handleScreenOut('@' + domain, row);
         }
       });
       dropdown.appendChild(domainItem);
@@ -220,9 +227,10 @@
     anchor.appendChild(dropdown);
     activeDropdown = dropdown;
 
-    // Close on outside click (next tick)
+    // Close on outside click or Escape (next tick)
     setTimeout(() => {
       document.addEventListener('click', onDocumentClick, true);
+      document.addEventListener('keydown', onEscapeKey, true);
     }, 0);
   }
 
@@ -266,7 +274,7 @@
     }
   }
 
-  async function handleScreenOut(target, row, rowEmail) {
+  async function handleScreenOut(target, row) {
     if (!(await ensureAuth())) return;
 
     const btns = row.querySelectorAll('.gs-trigger-btn');
@@ -277,7 +285,7 @@
       if (resp && resp.success) {
         const hiddenRows = hideMatchingRows(target);
 
-        refreshPanelCount();
+        updatePanelCount(resp.screenedOutCount);
         showToast(`Screened out ${target}`, 'success', {
           action: 'Undo',
           onAction: () => handleUndoScreenOut(target, hiddenRows, resp.movedIds),
@@ -292,7 +300,7 @@
     }
   }
 
-  async function handleScreenIn(target, row, rowEmail) {
+  async function handleScreenIn(target, row) {
     if (!(await ensureAuth())) return;
 
     const btns = row.querySelectorAll('.gs-trigger-btn');
@@ -302,7 +310,7 @@
       const resp = await chrome.runtime.sendMessage({ type: 'SCREEN_IN', target });
       if (resp && resp.success) {
         hideMatchingRows(target);
-        refreshPanelCount();
+        updatePanelCount(resp.screenedOutCount);
         showToast(`Screened in ${target} — moved to inbox`, 'success');
       } else {
         showToast(`Failed: ${resp?.error || 'Unknown error'}`, 'error');
@@ -323,7 +331,7 @@
       });
       if (resp && resp.success) {
         showRows(hiddenRows);
-        refreshPanelCount();
+        updatePanelCount(resp.screenedOutCount);
         showToast(`Undo successful for ${target}`, 'success');
       } else {
         showToast(`Undo failed: ${resp?.error || 'Unknown error'}`, 'error');
@@ -331,12 +339,6 @@
     } catch (err) {
       showToast(`Undo error: ${err.message}`, 'error');
     }
-  }
-
-  function resetButton(btn, label) {
-    if (!btn) return;
-    btn.disabled = false;
-    btn.textContent = label;
   }
 
   // ============================================================
@@ -448,13 +450,18 @@
     overlayEl.classList.remove('gs-panel-overlay-visible');
   }
 
+  function updatePanelCount(count) {
+    const tabCount = document.getElementById('gs-tab-count');
+    if (tabCount) tabCount.textContent = count;
+  }
+
   async function refreshPanelCount() {
     try {
       const resp = await chrome.runtime.sendMessage({ type: 'GET_SCREENED_OUT' });
-      const count = resp && resp.emails ? resp.emails.length : 0;
-      const tabCount = document.getElementById('gs-tab-count');
-      if (tabCount) tabCount.textContent = count;
-    } catch (_) {}
+      updatePanelCount(resp && resp.emails ? resp.emails.length : 0);
+    } catch (err) {
+      console.warn('[Gmail Screener] refreshPanelCount failed:', err);
+    }
   }
 
   async function refreshPanelList() {
@@ -496,7 +503,9 @@
           try {
             await chrome.runtime.sendMessage({ type: 'REMOVE_SCREENED_OUT', email });
             await refreshPanelList();
-          } catch (_) {
+            location.reload();
+          } catch (err) {
+            console.warn('[Gmail Screener] Remove sender failed:', err);
             removeBtn.disabled = false;
             removeBtn.textContent = 'Remove';
           }
@@ -553,7 +562,8 @@
       debounceTimer = setTimeout(processAllVisible, 250);
     });
 
-    observer.observe(document.body, { childList: true, subtree: true });
+    const root = document.querySelector('div[role="main"]') || document.body;
+    observer.observe(root, { childList: true, subtree: true });
   }
 
   // Periodic scan to catch rows the MutationObserver misses

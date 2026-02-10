@@ -3,6 +3,7 @@
 
 const GMAIL_API_BASE = 'https://www.googleapis.com/gmail/v1/users/me';
 const DEFAULT_LABEL_NAME = 'Screenout';
+let ensureLabelPromise = null;
 
 // ============================================================
 // OAuth
@@ -83,14 +84,22 @@ async function getScreenoutLabelId() {
     try {
       await gmailFetch(`/labels/${stored.screenoutLabelId}`);
       return stored.screenoutLabelId;
-    } catch (_) {
-      // deleted externally
+    } catch (err) {
+      console.warn('[Gmail Screener] Cached label no longer exists:', err);
     }
   }
   return null;
 }
 
 async function ensureScreenoutLabel() {
+  if (ensureLabelPromise) return ensureLabelPromise;
+  ensureLabelPromise = _ensureScreenoutLabel().finally(() => {
+    ensureLabelPromise = null;
+  });
+  return ensureLabelPromise;
+}
+
+async function _ensureScreenoutLabel() {
   const cached = await getScreenoutLabelId();
   if (cached) return cached;
 
@@ -143,6 +152,7 @@ async function findFilterForSender(email) {
   );
 }
 
+// Note: when email is "@domain.com", Gmail's from: filter also matches subdomains
 async function createFilterForSender(email, labelId) {
   const existing = await findFilterForSender(email);
   if (existing) return existing.id;
@@ -163,8 +173,11 @@ async function createFilterForSender(email, labelId) {
 async function deleteFilter(filterId) {
   try {
     await gmailFetch(`/settings/filters/${filterId}`, { method: 'DELETE' });
-  } catch (_) {
-    // already deleted
+  } catch (err) {
+    // 404 = already deleted, anything else is unexpected
+    if (!err.message?.includes('404')) {
+      console.warn('[Gmail Screener] deleteFilter failed:', err);
+    }
   }
 }
 
@@ -173,9 +186,10 @@ async function deleteFilter(filterId) {
 // ============================================================
 
 async function moveInboxMessagesToScreenout(email, labelId) {
+  // TODO: paginate using nextPageToken if a sender has >1000 inbox messages
   const query = `from:${email} in:inbox`;
   const result = await gmailFetch(
-    `/messages?q=${encodeURIComponent(query)}&maxResults=500`
+    `/messages?q=${encodeURIComponent(query)}&maxResults=1000`
   );
   if (!result.messages || result.messages.length === 0) return [];
 
@@ -192,9 +206,10 @@ async function moveInboxMessagesToScreenout(email, labelId) {
 }
 
 async function moveScreenoutMessagesToInbox(email, labelId) {
+  // TODO: paginate using nextPageToken if a sender has >1000 Screenout messages
   const query = `from:${email} label:${DEFAULT_LABEL_NAME}`;
   const result = await gmailFetch(
-    `/messages?q=${encodeURIComponent(query)}&maxResults=500`
+    `/messages?q=${encodeURIComponent(query)}&maxResults=1000`
   );
   if (!result.messages || result.messages.length === 0) return [];
 
@@ -231,7 +246,8 @@ async function handleMessage(msg) {
       const labelId = await ensureScreenoutLabel();
       const filterId = await createFilterForSender(target, labelId);
       const movedIds = await moveInboxMessagesToScreenout(target, labelId);
-      return { success: true, filterId, movedIds };
+      const screenedOutCount = (await getScreenedOutEmails()).length;
+      return { success: true, filterId, movedIds, screenedOutCount };
     }
 
     case 'SCREEN_IN': {
@@ -240,7 +256,8 @@ async function handleMessage(msg) {
       if (filter) await deleteFilter(filter.id);
       const labelId = await getScreenoutLabelId();
       if (labelId) await moveScreenoutMessagesToInbox(target, labelId);
-      return { success: true };
+      const screenedOutCount = (await getScreenedOutEmails()).length;
+      return { success: true, screenedOutCount };
     }
 
     case 'UNDO_SCREEN_OUT': {
@@ -259,7 +276,8 @@ async function handleMessage(msg) {
           }),
         });
       }
-      return { success: true };
+      const screenedOutCount = (await getScreenedOutEmails()).length;
+      return { success: true, screenedOutCount };
     }
 
     case 'GET_SCREENED_OUT': {
@@ -271,6 +289,8 @@ async function handleMessage(msg) {
       const target = (msg.email || '').toLowerCase();
       const filter = await findFilterForSender(target);
       if (filter) await deleteFilter(filter.id);
+      const labelId = await getScreenoutLabelId();
+      if (labelId) await moveScreenoutMessagesToInbox(target, labelId);
       return { success: true };
     }
 

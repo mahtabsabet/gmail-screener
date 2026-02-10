@@ -64,8 +64,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       if (resp && resp.success) {
         await loadList();
+        // Reload Gmail tabs so moved messages appear in inbox
+        const gmailTabs = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
+        for (const tab of gmailTabs) chrome.tabs.reload(tab.id);
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn('[Gmail Screener] Remove sender failed:', err);
+    }
   }
 
   // ---- Auth ----
@@ -82,7 +87,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       senderListEl.innerHTML =
         '<div class="empty-state">Sign in to view screened-out senders.</div>';
     }
-  } catch (_) {
+  } catch (err) {
+    console.warn('[Gmail Screener] Auth check failed:', err);
     authStatusEl.innerHTML =
       '<span class="dot dot-red"></span> Not connected';
     signInBtn.style.display = 'block';
@@ -115,9 +121,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // ---- Links ----
-  openScreenoutLink.addEventListener('click', (e) => {
+  openScreenoutLink.addEventListener('click', async (e) => {
     e.preventDefault();
-    chrome.tabs.create({ url: 'https://mail.google.com/mail/u/0/#label/Screenout' });
+    // Find active Gmail tab to preserve the correct account (/u/0/, /u/1/, etc.)
+    const [tab] = await chrome.tabs.query({ url: 'https://mail.google.com/*', active: true, currentWindow: true });
+    if (tab) {
+      const base = tab.url.match(/https:\/\/mail\.google\.com\/mail\/u\/\d+\//)?.[0]
+        || 'https://mail.google.com/mail/u/0/';
+      chrome.tabs.update(tab.id, { url: base + '#label/Screenout' });
+    } else {
+      chrome.tabs.create({ url: 'https://mail.google.com/mail/u/0/#label/Screenout' });
+    }
   });
 
   openOptionsLink.addEventListener('click', (e) => {

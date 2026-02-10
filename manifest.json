@@ -5,7 +5,8 @@
   "description": "Hey-style sender screening for Gmail. Screen out senders from your inbox — screen them back in from the Screenout folder.",
   "permissions": [
     "identity",
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
     "https://mail.google.com/*",

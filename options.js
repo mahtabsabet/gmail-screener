@@ -17,7 +17,9 @@ document.addEventListener('DOMContentLoaded', () => {
         signInBtn.style.display = 'none';
         return true;
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn('[Gmail Screener] Auth check failed:', err);
+    }
     authStatusEl.innerHTML =
       '<span class="dot dot-red"></span> Not connected to Gmail';
     signInBtn.style.display = 'inline-block';
@@ -52,8 +54,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const emails = resp && resp.emails ? resp.emails : [];
       renderList(emails);
     } catch (err) {
-      blockedListEl.innerHTML =
-        '<div class="empty-state">Failed to load: ' + err.message + '</div>';
+      const errDiv = document.createElement('div');
+      errDiv.className = 'empty-state';
+      errDiv.textContent = 'Failed to load: ' + err.message;
+      blockedListEl.innerHTML = '';
+      blockedListEl.appendChild(errDiv);
     }
   }
 
@@ -96,6 +101,9 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       if (resp && resp.success) {
         await loadList();
+        // Reload Gmail tabs so moved messages appear in inbox
+        const gmailTabs = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
+        for (const tab of gmailTabs) chrome.tabs.reload(tab.id);
       } else {
         alert('Failed to remove: ' + (resp?.error || 'Unknown error'));
       }
