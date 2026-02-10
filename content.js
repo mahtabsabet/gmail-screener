@@ -89,46 +89,49 @@
     return at !== -1 ? email.substring(at + 1) : null;
   }
 
+  // SVG icons
+  const ICON_BLOCK = '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9A7.902 7.902 0 014 12zm8 8c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1A7.902 7.902 0 0120 12c0 4.42-3.58 8-8 8z"/></svg>';
+  const ICON_PERSON_BLOCK = '<svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>';
+  const ICON_GLOBE = '<svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95a15.65 15.65 0 00-1.38-3.56A8.03 8.03 0 0118.92 8zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2s.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.987 7.987 0 015.08 16zm2.95-8H5.08a7.987 7.987 0 014.33-3.56A15.65 15.65 0 008.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2s.07-1.35.16-2h4.68c.09.65.16 1.32.16 2s-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 01-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2s-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z"/></svg>';
+  const ICON_CHECK = '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+
+  let activeDropdown = null;
+
+  function closeActiveDropdown() {
+    if (activeDropdown) {
+      activeDropdown.remove();
+      activeDropdown = null;
+    }
+    document.removeEventListener('click', onDocumentClick, true);
+  }
+
+  function onDocumentClick(e) {
+    if (activeDropdown && !activeDropdown.contains(e.target)) {
+      closeActiveDropdown();
+    }
+  }
+
   function injectButton(row, email, view) {
-    if (row.querySelector('.gs-actions')) return;
+    if (row.querySelector('.gs-trigger')) return;
 
     const domain = getDomain(email);
+    const isScreenout = view === 'screenout';
+    const actionLabel = isScreenout ? 'Screen in' : 'Screen out';
+
+    // Trigger button
     const container = document.createElement('span');
-    container.className = 'gs-actions';
+    container.className = 'gs-trigger';
 
-    if (view === 'screenout') {
-      const emailBtn = document.createElement('button');
-      emailBtn.className = 'gs-action-btn gs-screen-in';
-      emailBtn.textContent = 'Screen in';
-      emailBtn.title = `Screen in ${email}`;
-      emailBtn.addEventListener('click', handleClick(() => handleScreenIn(email, row, email)));
-      container.appendChild(emailBtn);
-
-      if (domain) {
-        const domainBtn = document.createElement('button');
-        domainBtn.className = 'gs-action-btn gs-screen-in gs-domain-btn';
-        domainBtn.textContent = `@${domain}`;
-        domainBtn.title = `Screen in all of @${domain}`;
-        domainBtn.addEventListener('click', handleClick(() => handleScreenIn(`@${domain}`, row, email)));
-        container.appendChild(domainBtn);
-      }
-    } else {
-      const emailBtn = document.createElement('button');
-      emailBtn.className = 'gs-action-btn gs-screen-out';
-      emailBtn.textContent = 'Screen out';
-      emailBtn.title = `Screen out ${email}`;
-      emailBtn.addEventListener('click', handleClick(() => handleScreenOut(email, row, email)));
-      container.appendChild(emailBtn);
-
-      if (domain) {
-        const domainBtn = document.createElement('button');
-        domainBtn.className = 'gs-action-btn gs-screen-out gs-domain-btn';
-        domainBtn.textContent = `@${domain}`;
-        domainBtn.title = `Screen out all of @${domain}`;
-        domainBtn.addEventListener('click', handleClick(() => handleScreenOut(`@${domain}`, row, email)));
-        container.appendChild(domainBtn);
-      }
-    }
+    const triggerBtn = document.createElement('button');
+    triggerBtn.className = 'gs-trigger-btn';
+    triggerBtn.innerHTML = ICON_BLOCK + ' ' + actionLabel;
+    triggerBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      showDropdown(row, email, domain, view, container);
+    });
+    container.appendChild(triggerBtn);
 
     const senderCell =
       row.querySelector('td.yX') ||
@@ -143,13 +146,89 @@
     row.classList.add('gs-has-action');
   }
 
-  function handleClick(fn) {
-    return function (e) {
+  function showDropdown(row, email, domain, view, anchor) {
+    closeActiveDropdown();
+
+    const isScreenout = view === 'screenout';
+    const headerLabel = isScreenout ? 'SCREEN IN' : 'SCREEN OUT';
+    const headerIcon = isScreenout ? ICON_CHECK : ICON_BLOCK;
+    const senderAction = isScreenout ? 'Unblock sender' : 'Block sender';
+    const domainAction = isScreenout ? 'Unblock domain' : 'Block domain';
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'gs-dropdown';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'gs-dropdown-header';
+    header.innerHTML = headerIcon + ' ' + headerLabel;
+    dropdown.appendChild(header);
+
+    // Divider
+    const div1 = document.createElement('div');
+    div1.className = 'gs-dropdown-divider';
+    dropdown.appendChild(div1);
+
+    // Sender item
+    const senderItem = document.createElement('button');
+    senderItem.className = 'gs-dropdown-item';
+    senderItem.innerHTML =
+      '<span class="gs-dropdown-icon">' + ICON_PERSON_BLOCK + '</span>' +
+      '<span><span class="gs-dropdown-label">' + senderAction + '</span><br>' +
+      '<span class="gs-dropdown-sub">' + escapeHtml(email) + '</span></span>';
+    senderItem.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      fn();
-    };
+      closeActiveDropdown();
+      if (isScreenout) {
+        handleScreenIn(email, row, email);
+      } else {
+        handleScreenOut(email, row, email);
+      }
+    });
+    dropdown.appendChild(senderItem);
+
+    // Domain item
+    if (domain) {
+      const div2 = document.createElement('div');
+      div2.className = 'gs-dropdown-divider';
+      dropdown.appendChild(div2);
+
+      const domainItem = document.createElement('button');
+      domainItem.className = 'gs-dropdown-item';
+      domainItem.innerHTML =
+        '<span class="gs-dropdown-icon">' + ICON_GLOBE + '</span>' +
+        '<span><span class="gs-dropdown-label">' + domainAction + '</span><br>' +
+        '<span class="gs-dropdown-sub">All from @' + escapeHtml(domain) + '</span></span>';
+      domainItem.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        closeActiveDropdown();
+        if (isScreenout) {
+          handleScreenIn('@' + domain, row, email);
+        } else {
+          handleScreenOut('@' + domain, row, email);
+        }
+      });
+      dropdown.appendChild(domainItem);
+    }
+
+    anchor.style.position = 'relative';
+    anchor.appendChild(dropdown);
+    activeDropdown = dropdown;
+
+    // Close on outside click (next tick)
+    setTimeout(() => {
+      document.addEventListener('click', onDocumentClick, true);
+    }, 0);
+  }
+
+  function escapeHtml(str) {
+    const d = document.createElement('span');
+    d.textContent = str;
+    return d.innerHTML;
   }
 
   // ============================================================
@@ -189,7 +268,7 @@
   async function handleScreenOut(target, row, rowEmail) {
     if (!(await ensureAuth())) return;
 
-    const btns = row.querySelectorAll('.gs-action-btn');
+    const btns = row.querySelectorAll('.gs-trigger-btn');
     for (const b of btns) { b.disabled = true; }
 
     try {
@@ -215,7 +294,7 @@
   async function handleScreenIn(target, row, rowEmail) {
     if (!(await ensureAuth())) return;
 
-    const btns = row.querySelectorAll('.gs-action-btn');
+    const btns = row.querySelectorAll('.gs-trigger-btn');
     for (const b of btns) { b.disabled = true; }
 
     try {
@@ -436,7 +515,7 @@
 
   function processRow(row) {
     // Always check if buttons are present — Gmail frequently re-renders rows
-    if (row.querySelector('.gs-actions')) return;
+    if (row.querySelector('.gs-trigger')) return;
 
     const email = extractSenderEmail(row);
     if (!email) return;
