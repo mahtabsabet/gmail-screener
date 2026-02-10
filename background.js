@@ -92,7 +92,9 @@ async function gmailFetch(path, options = {}) {
   if (!response.ok) {
     let body = '';
     try { body = JSON.stringify(await response.json()); } catch (_) {}
-    throw new Error(`Gmail API ${response.status}: ${body}`);
+    const reqInfo = `${options.method || 'GET'} ${path}`;
+    const reqBody = options.body ? ` | Req: ${options.body.substring(0, 300)}` : '';
+    throw new Error(`Gmail API ${response.status} [${reqInfo}]: ${body}${reqBody}`);
   }
 
   if (response.status === 204) return null;
