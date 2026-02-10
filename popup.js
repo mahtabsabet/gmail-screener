@@ -1,77 +1,107 @@
-// popup.js - Extension popup logic
+// popup.js - Extension popup logic (Screener Mode)
 'use strict';
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const blockedCountEl = document.getElementById('blocked-count');
   const authStatusEl = document.getElementById('auth-status');
   const signInBtn = document.getElementById('sign-in-btn');
-  const senderListEl = document.getElementById('sender-list');
-  const openScreenoutLink = document.getElementById('open-screenout');
+  const screenerSection = document.getElementById('screener-section');
+  const modeStatusEl = document.getElementById('mode-status');
+  const modeStatsEl = document.getElementById('mode-stats');
+  const enableBtn = document.getElementById('enable-btn');
+  const disableBtn = document.getElementById('disable-btn');
+  const sweepLabel = document.getElementById('sweep-label');
+  const sweepCheckbox = document.getElementById('sweep-checkbox');
+  const sweepText = document.getElementById('sweep-text');
+  const openScreener = document.getElementById('open-screener');
+  const openScreenout = document.getElementById('open-screenout');
+  const openSetAside = document.getElementById('open-setaside');
   const openOptionsLink = document.getElementById('open-options');
 
-  // ---- Render sender list ----
-  function renderList(emails) {
-    senderListEl.innerHTML = '';
-    blockedCountEl.textContent = emails.length;
-
-    if (emails.length === 0) {
-      senderListEl.innerHTML =
-        '<div class="empty-state">No screened-out senders yet.</div>';
-      return;
-    }
-
-    const sorted = [...emails].sort();
-    for (const email of sorted) {
-      const row = document.createElement('div');
-      row.className = 'sender-row';
-
-      const label = document.createElement('span');
-      label.className = 'sender-email';
-      if (email.startsWith('@')) {
-        label.classList.add('sender-domain');
-      }
-      label.textContent = email;
-      row.appendChild(label);
-
-      const removeBtn = document.createElement('button');
-      removeBtn.className = 'btn-remove';
-      removeBtn.textContent = '\u00d7';
-      removeBtn.title = `Remove filter for ${email}`;
-      removeBtn.addEventListener('click', () => removeSender(email));
-      row.appendChild(removeBtn);
-
-      senderListEl.appendChild(row);
-    }
-  }
-
-  async function loadList() {
-    senderListEl.innerHTML = '<div class="empty-state">Loading\u2026</div>';
+  // ---- Status loading ----
+  async function loadStatus() {
     try {
-      const resp = await chrome.runtime.sendMessage({ type: 'GET_SCREENED_OUT' });
-      const emails = resp && resp.emails ? resp.emails : [];
-      renderList(emails);
+      const resp = await chrome.runtime.sendMessage({ type: 'GET_STATUS' });
+      if (resp && resp.screenerEnabled) {
+        modeStatusEl.textContent = 'ON';
+        modeStatusEl.className = 'mode-status mode-status-on';
+        enableBtn.style.display = 'none';
+        disableBtn.style.display = 'block';
+        sweepLabel.style.display = 'flex';
+        sweepText.textContent = 'Move Screener mail back to inbox';
+        sweepCheckbox.checked = true;
+
+        if (resp.screenerCount) {
+          modeStatsEl.style.display = 'block';
+          modeStatsEl.innerHTML =
+            `<strong>${resp.screenerCount.threads}</strong> threads in Screener` +
+            (resp.screenerCount.unread > 0
+              ? ` (<strong>${resp.screenerCount.unread}</strong> unread)`
+              : '');
+        }
+      } else {
+        modeStatusEl.textContent = 'OFF';
+        modeStatusEl.className = 'mode-status mode-status-off';
+        enableBtn.style.display = 'block';
+        disableBtn.style.display = 'none';
+        sweepLabel.style.display = 'flex';
+        sweepText.textContent = 'Sweep existing inbox into Screener';
+        sweepCheckbox.checked = true;
+        modeStatsEl.style.display = 'none';
+      }
     } catch (err) {
-      senderListEl.innerHTML =
-        '<div class="empty-state">Failed to load.</div>';
+      console.warn('[Gmail Screener] Status check failed:', err);
     }
   }
 
-  async function removeSender(email) {
+  // ---- Enable/Disable ----
+  enableBtn.addEventListener('click', async () => {
+    enableBtn.disabled = true;
+    enableBtn.textContent = 'Enabling\u2026';
     try {
       const resp = await chrome.runtime.sendMessage({
-        type: 'REMOVE_SCREENED_OUT',
-        email,
+        type: 'ENABLE_SCREENER',
+        sweepInbox: sweepCheckbox.checked,
       });
       if (resp && resp.success) {
-        await loadList();
-        // Reload Gmail tabs so moved messages appear in inbox
+        await loadStatus();
+        // Reload Gmail tabs
         const gmailTabs = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
         for (const tab of gmailTabs) chrome.tabs.reload(tab.id);
+      } else {
+        enableBtn.textContent = 'Failed - try again';
       }
     } catch (err) {
-      console.warn('[Gmail Screener] Remove sender failed:', err);
+      enableBtn.textContent = 'Error - try again';
     }
-  }
+    enableBtn.disabled = false;
+    if (enableBtn.style.display !== 'none') {
+      enableBtn.textContent = 'Enable Screener Mode';
+    }
+  });
+
+  disableBtn.addEventListener('click', async () => {
+    disableBtn.disabled = true;
+    disableBtn.textContent = 'Disabling\u2026';
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        type: 'DISABLE_SCREENER',
+        restoreToInbox: sweepCheckbox.checked,
+      });
+      if (resp && resp.success) {
+        await loadStatus();
+        const gmailTabs = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
+        for (const tab of gmailTabs) chrome.tabs.reload(tab.id);
+      } else {
+        disableBtn.textContent = 'Failed - try again';
+      }
+    } catch (err) {
+      disableBtn.textContent = 'Error - try again';
+    }
+    disableBtn.disabled = false;
+    if (disableBtn.style.display !== 'none') {
+      disableBtn.textContent = 'Disable Screener Mode';
+    }
+  });
 
   // ---- Auth ----
   try {
@@ -79,21 +109,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (authResp && authResp.authenticated) {
       authStatusEl.innerHTML =
         '<span class="dot dot-green"></span> Connected to Gmail';
-      await loadList();
+      screenerSection.style.display = 'block';
+      await loadStatus();
     } else {
       authStatusEl.innerHTML =
         '<span class="dot dot-red"></span> Not connected';
       signInBtn.style.display = 'block';
-      senderListEl.innerHTML =
-        '<div class="empty-state">Sign in to view screened-out senders.</div>';
     }
   } catch (err) {
     console.warn('[Gmail Screener] Auth check failed:', err);
     authStatusEl.innerHTML =
       '<span class="dot dot-red"></span> Not connected';
     signInBtn.style.display = 'block';
-    senderListEl.innerHTML =
-      '<div class="empty-state">Sign in to view screened-out senders.</div>';
   }
 
   signInBtn.addEventListener('click', async () => {
@@ -105,7 +132,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         authStatusEl.innerHTML =
           '<span class="dot dot-green"></span> Connected to Gmail';
         signInBtn.style.display = 'none';
-        await loadList();
+        screenerSection.style.display = 'block';
+        await loadStatus();
       } else {
         authStatusEl.innerHTML =
           '<span class="dot dot-red"></span> Sign-in failed';
@@ -120,18 +148,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // ---- Links ----
-  openScreenoutLink.addEventListener('click', async (e) => {
-    e.preventDefault();
-    // Find active Gmail tab to preserve the correct account (/u/0/, /u/1/, etc.)
+  // ---- Folder links ----
+  async function openGmailLabel(labelHash) {
     const [tab] = await chrome.tabs.query({ url: 'https://mail.google.com/*', active: true, currentWindow: true });
     if (tab) {
       const base = tab.url.match(/https:\/\/mail\.google\.com\/mail\/u\/\d+\//)?.[0]
         || 'https://mail.google.com/mail/u/0/';
-      chrome.tabs.update(tab.id, { url: base + '#label/Screenout' });
+      chrome.tabs.update(tab.id, { url: base + labelHash });
     } else {
-      chrome.tabs.create({ url: 'https://mail.google.com/mail/u/0/#label/Screenout' });
+      chrome.tabs.create({ url: 'https://mail.google.com/mail/u/0/' + labelHash });
     }
+  }
+
+  openScreener.addEventListener('click', (e) => {
+    e.preventDefault();
+    openGmailLabel('#label/Screener');
+  });
+
+  openScreenout.addEventListener('click', (e) => {
+    e.preventDefault();
+    openGmailLabel('#label/Screenout');
+  });
+
+  openSetAside.addEventListener('click', (e) => {
+    e.preventDefault();
+    openGmailLabel('#label/Set+Aside');
   });
 
   openOptionsLink.addEventListener('click', (e) => {
