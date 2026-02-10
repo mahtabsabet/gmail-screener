@@ -172,7 +172,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   openSetAside.addEventListener('click', (e) => {
     e.preventDefault();
-    openGmailLabel('#label/Set+Aside');
+    openGmailLabel('#label/SetAside');
   });
 
   openOptionsLink.addEventListener('click', (e) => {
