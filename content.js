@@ -128,6 +128,27 @@
   // Action handlers
   // ============================================================
 
+  function hideAllRowsFromSender(email) {
+    const rows = getInboxRows();
+    const hidden = [];
+    for (const r of rows) {
+      const rowEmail = extractSenderEmail(r);
+      if (rowEmail === email) {
+        r.classList.add('gs-row-exit');
+        setTimeout(() => { r.style.display = 'none'; }, 300);
+        hidden.push(r);
+      }
+    }
+    return hidden;
+  }
+
+  function showAllRowsFromSender(hiddenRows) {
+    for (const r of hiddenRows) {
+      r.style.display = '';
+      r.classList.remove('gs-row-exit');
+    }
+  }
+
   async function handleScreenOut(email, row) {
     if (!(await ensureAuth())) return;
 
@@ -140,12 +161,11 @@
     try {
       const resp = await chrome.runtime.sendMessage({ type: 'SCREEN_OUT', email });
       if (resp && resp.success) {
-        row.classList.add('gs-row-exit');
-        setTimeout(() => { row.style.display = 'none'; }, 300);
+        const hiddenRows = hideAllRowsFromSender(email);
 
         showToast(`Screened out ${email}`, 'success', {
           action: 'Undo',
-          onAction: () => handleUndoScreenOut(email, row, resp.movedIds),
+          onAction: () => handleUndoScreenOut(email, hiddenRows, resp.movedIds),
         });
       } else {
         showToast(`Failed: ${resp?.error || 'Unknown error'}`, 'error');
@@ -169,8 +189,7 @@
     try {
       const resp = await chrome.runtime.sendMessage({ type: 'SCREEN_IN', email });
       if (resp && resp.success) {
-        row.classList.add('gs-row-exit');
-        setTimeout(() => { row.style.display = 'none'; }, 300);
+        hideAllRowsFromSender(email);
         showToast(`Screened in ${email} — moved to inbox`, 'success');
       } else {
         showToast(`Failed: ${resp?.error || 'Unknown error'}`, 'error');
@@ -182,7 +201,7 @@
     }
   }
 
-  async function handleUndoScreenOut(email, row, movedIds) {
+  async function handleUndoScreenOut(email, hiddenRows, movedIds) {
     try {
       const resp = await chrome.runtime.sendMessage({
         type: 'UNDO_SCREEN_OUT',
@@ -190,8 +209,7 @@
         movedIds,
       });
       if (resp && resp.success) {
-        row.style.display = '';
-        row.classList.remove('gs-row-exit');
+        showAllRowsFromSender(hiddenRows);
         showToast(`Undo successful for ${email}`, 'success');
       } else {
         showToast(`Undo failed: ${resp?.error || 'Unknown error'}`, 'error');
