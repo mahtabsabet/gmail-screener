@@ -211,13 +211,15 @@ async function getAllScreenoutFilters() {
   });
 }
 
-/** Find all allow filters (filters that remove Screener label with a from: criteria) */
+/** Find all allow filters (filters that add INBOX with a from: criteria, but don't add Screenout) */
 async function getAllAllowFilters() {
-  const screenerLabelId = await ensureLabel(LABEL_SCREENER);
+  const screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
   const filters = await getAllFilters();
   return filters.filter((f) => {
     if (!f.criteria || !f.criteria.from) return false;
-    return (f.action?.removeLabelIds || []).includes(screenerLabelId);
+    const addIds = f.action?.addLabelIds || [];
+    // Allow filter: adds INBOX but doesn't add Screenout
+    return addIds.includes('INBOX') && !addIds.includes(screenoutLabelId);
   });
 }
 
@@ -283,11 +285,12 @@ async function removeDefaultRoutingFilter() {
 // Per-sender filter operations
 // ============================================================
 
-/** Create an allow filter: removes Screener label, ensures INBOX */
+/**
+ * Create an allow filter: adds INBOX for this sender.
+ * Note: Gmail filters API only allows system labels in removeLabelIds,
+ * so we handle custom label removal (Screener/Screenout) via sweeps.
+ */
 async function createAllowFilter(target) {
-  const screenerLabelId = await ensureLabel(LABEL_SCREENER);
-  const screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
-
   // Check if allow filter already exists
   const allowFilters = await getAllAllowFilters();
   const existing = await findFilterByFrom(allowFilters, target);
@@ -298,7 +301,6 @@ async function createAllowFilter(target) {
     body: JSON.stringify({
       criteria: { from: target },
       action: {
-        removeLabelIds: [screenerLabelId, screenoutLabelId],
         addLabelIds: ['INBOX'],
       },
     }),
@@ -306,9 +308,12 @@ async function createAllowFilter(target) {
   return filter.id;
 }
 
-/** Create a screenout filter: adds Screenout, removes INBOX and Screener */
+/**
+ * Create a screenout filter: adds Screenout, removes INBOX.
+ * Note: Gmail filters API only allows system labels in removeLabelIds,
+ * so Screener label removal is handled via sweeps.
+ */
 async function createScreenoutFilter(target) {
-  const screenerLabelId = await ensureLabel(LABEL_SCREENER);
   const screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
 
   const screenoutFilters = await getAllScreenoutFilters();
@@ -321,7 +326,7 @@ async function createScreenoutFilter(target) {
       criteria: { from: target },
       action: {
         addLabelIds: [screenoutLabelId],
-        removeLabelIds: ['INBOX', screenerLabelId],
+        removeLabelIds: ['INBOX'],
       },
     }),
   });
