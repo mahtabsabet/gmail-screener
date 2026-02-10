@@ -124,7 +124,8 @@
 
     const triggerBtn = document.createElement('button');
     triggerBtn.className = 'gs-trigger-btn';
-    triggerBtn.innerHTML = ICON_BLOCK + ' ' + actionLabel;
+    triggerBtn.title = actionLabel + ' sender';
+    triggerBtn.innerHTML = ICON_BLOCK;
     triggerBtn.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
