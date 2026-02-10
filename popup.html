@@ -5,7 +5,7 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      width: 300px;
+      width: 340px;
       font-family: 'Segoe UI', Roboto, Arial, sans-serif;
       font-size: 13px;
       color: #202124;
@@ -20,25 +20,7 @@
       gap: 8px;
     }
     h1 img { width: 20px; height: 20px; }
-    .stat {
-      text-align: center;
-      padding: 12px 8px;
-      background: #f8f9fa;
-      border-radius: 8px;
-      margin-bottom: 14px;
-    }
-    .stat-number {
-      font-size: 24px;
-      font-weight: 700;
-      color: #c5221f;
-      line-height: 1.2;
-    }
-    .stat-label {
-      font-size: 11px;
-      color: #5f6368;
-      margin-top: 2px;
-    }
-    #auth-section { padding: 10px 0; border-top: 1px solid #e8eaed; }
+    #auth-section { padding: 8px 0; }
     #auth-status { font-size: 12px; color: #5f6368; margin-bottom: 8px; }
     .dot {
       display: inline-block; width: 8px; height: 8px;
@@ -54,19 +36,84 @@
     }
     .btn-primary { background: #1a73e8; color: #fff; }
     .btn-primary:hover { background: #1765cc; }
-    .btn-secondary { background: #f1f3f4; color: #3c4043; }
-    .btn-secondary:hover { background: #e8eaed; }
     #sign-in-btn { display: none; }
-    .link-row { margin-top: 10px; text-align: center; }
-    .link-row a {
-      font-size: 12px; color: #1a73e8;
+
+    /* Sender list */
+    .list-header {
+      font-size: 13px;
+      font-weight: 600;
+      margin-top: 12px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .count {
+      display: inline-block;
+      min-width: 18px;
+      padding: 0 5px;
+      background: #fce8e6;
+      border-radius: 9px;
+      font-size: 11px;
+      font-weight: 600;
+      text-align: center;
+      color: #c5221f;
+      line-height: 18px;
+    }
+    #sender-list {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .sender-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 10px;
+      border-bottom: 1px solid #f1f3f4;
+    }
+    .sender-row:last-child { border-bottom: none; }
+    .sender-email {
+      font-size: 12px;
+      color: #202124;
+      word-break: break-all;
+      flex: 1;
+      margin-right: 8px;
+    }
+    .sender-domain { color: #5f6368; }
+    .btn-remove {
+      background: none;
+      border: none;
+      color: #5f6368;
+      cursor: pointer;
+      font-size: 15px;
+      padding: 2px 4px;
+      border-radius: 4px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .btn-remove:hover { background: #fce8e6; color: #c5221f; }
+    .empty-state {
+      color: #9aa0a6;
+      font-size: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    /* Footer links */
+    .links {
+      margin-top: 10px;
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+    }
+    .links a {
+      font-size: 11px; color: #1a73e8;
       text-decoration: none; cursor: pointer;
     }
-    .link-row a:hover { text-decoration: underline; }
-    .note {
-      font-size: 11px; color: #9aa0a6;
-      text-align: center; margin-top: 10px;
-    }
+    .links a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -75,23 +122,22 @@
     Sender Screener
   </h1>
 
-  <div class="stat">
-    <div class="stat-number" id="blocked-count">-</div>
-    <div class="stat-label">senders screened out</div>
-  </div>
-
   <div id="auth-section">
     <div id="auth-status">Checking&hellip;</div>
     <button id="sign-in-btn" class="btn btn-primary">Sign in with Google</button>
   </div>
 
-  <button id="options-btn" class="btn btn-secondary">Manage senders</button>
-
-  <div class="link-row">
-    <a id="open-screenout">Open Screenout folder</a>
+  <div class="list-header">
+    Screened out <span class="count" id="blocked-count">0</span>
+  </div>
+  <div id="sender-list">
+    <div class="empty-state">Loading&hellip;</div>
   </div>
 
-  <div class="note">Data stored in Gmail filters only &mdash; nothing local.</div>
+  <div class="links">
+    <a id="open-screenout">Screenout folder</a>
+    <a id="open-options">Full settings</a>
+  </div>
 
   <script src="popup.js"></script>
 </body>
