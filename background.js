@@ -157,13 +157,25 @@ async function ensureLabel(labelName) {
 }
 
 async function _ensureLabel(labelName) {
-  // Always verify against the full labels list to avoid stale IDs
+  // Fast path: check cached ID and verify it still exists
+  const key = storageKeyForLabel(labelName);
+  const stored = await chrome.storage.local.get([key]);
+  if (stored[key]) {
+    try {
+      await gmailFetch(`/labels/${stored[key]}`);
+      return stored[key];
+    } catch (_) {
+      // Cached ID is stale, fall through to full lookup
+    }
+  }
+
+  // Slow path: fetch all labels to find by name
   const labelsResp = await gmailFetch('/labels');
   const existing = (labelsResp.labels || []).find(
     (l) => l.name === labelName
   );
   if (existing) {
-    await chrome.storage.local.set({ [storageKeyForLabel(labelName)]: existing.id });
+    await chrome.storage.local.set({ [key]: existing.id });
     console.log(`[Gmail Screener] Label ${labelName} => ${existing.id}`);
     return existing.id;
   }
@@ -177,7 +189,7 @@ async function _ensureLabel(labelName) {
       messageListVisibility: 'show',
     }),
   });
-  await chrome.storage.local.set({ [storageKeyForLabel(labelName)]: newLabel.id });
+  await chrome.storage.local.set({ [key]: newLabel.id });
   console.log(`[Gmail Screener] Label ${labelName} => ${newLabel.id} (created)`);
   return newLabel.id;
 }
@@ -202,9 +214,9 @@ async function getAllFilters() {
 }
 
 /** Find all screenout filters (filters that add Screenout label with a from: criteria) */
-async function getAllScreenoutFilters() {
-  const screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
-  const filters = await getAllFilters();
+async function getAllScreenoutFilters(screenoutLabelId, filters) {
+  if (!screenoutLabelId) screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
+  if (!filters) filters = await getAllFilters();
   return filters.filter((f) => {
     if (!f.criteria || !f.criteria.from) return false;
     return (f.action?.addLabelIds || []).includes(screenoutLabelId);
@@ -212,9 +224,9 @@ async function getAllScreenoutFilters() {
 }
 
 /** Find all allow filters (filters that add INBOX with a from: criteria, but don't add Screenout) */
-async function getAllAllowFilters() {
-  const screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
-  const filters = await getAllFilters();
+async function getAllAllowFilters(screenoutLabelId, filters) {
+  if (!screenoutLabelId) screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
+  if (!filters) filters = await getAllFilters();
   return filters.filter((f) => {
     if (!f.criteria || !f.criteria.from) return false;
     const addIds = f.action?.addLabelIds || [];
@@ -290,11 +302,12 @@ async function removeDefaultRoutingFilter() {
  * Note: Gmail filters API only allows system labels in removeLabelIds,
  * so we handle custom label removal (Screener/Screenout) via sweeps.
  */
-async function createAllowFilter(target) {
+async function createAllowFilter(target, existingAllowFilters) {
   // Check if allow filter already exists
-  const allowFilters = await getAllAllowFilters();
-  const existing = await findFilterByFrom(allowFilters, target);
-  if (existing) return existing.id;
+  if (existingAllowFilters) {
+    const existing = await findFilterByFrom(existingAllowFilters, target);
+    if (existing) return existing.id;
+  }
 
   const filter = await gmailFetch('/settings/filters', {
     method: 'POST',
@@ -313,12 +326,13 @@ async function createAllowFilter(target) {
  * Note: Gmail filters API only allows system labels in removeLabelIds,
  * so Screener label removal is handled via sweeps.
  */
-async function createScreenoutFilter(target) {
-  const screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
+async function createScreenoutFilter(target, screenoutLabelId, existingScreenoutFilters) {
+  if (!screenoutLabelId) screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
 
-  const screenoutFilters = await getAllScreenoutFilters();
-  const existing = await findFilterByFrom(screenoutFilters, target);
-  if (existing) return existing.id;
+  if (existingScreenoutFilters) {
+    const existing = await findFilterByFrom(existingScreenoutFilters, target);
+    if (existing) return existing.id;
+  }
 
   const filter = await gmailFetch('/settings/filters', {
     method: 'POST',
@@ -358,10 +372,10 @@ async function sweepMessages(query, addLabelIds, removeLabelIds, cap) {
 async function modifyMessages(ids, addLabelIds, removeLabelIds) {
   if (!ids || ids.length === 0) return;
   const body = JSON.stringify({ addLabelIds, removeLabelIds });
-  // Process in parallel batches of 10, ignoring errors for individual messages
+  // Process in parallel batches of 25, ignoring errors for individual messages
   // (message may have been deleted/moved since the search)
-  for (let i = 0; i < ids.length; i += 10) {
-    const batch = ids.slice(i, i + 10);
+  for (let i = 0; i < ids.length; i += 25) {
+    const batch = ids.slice(i, i + 25);
     await Promise.all(batch.map((id) =>
       gmailFetch(`/messages/${id}/modify`, { method: 'POST', body })
         .catch((err) => console.warn(`[Gmail Screener] Skipping message ${id}:`, err.message))
@@ -418,33 +432,45 @@ async function disableScreenerMode(restoreToInbox) {
 // ============================================================
 
 async function handleAllow(target) {
-  const screenerLabelId = await ensureLabel(LABEL_SCREENER);
+  // Fetch labels and filters once upfront
+  const [screenerLabelId, screenoutLabelId, filters] = await Promise.all([
+    ensureLabel(LABEL_SCREENER),
+    ensureLabel(LABEL_SCREENOUT),
+    getAllFilters(),
+  ]);
 
-  const screenoutFilters = await getAllScreenoutFilters();
+  const screenoutFilters = await getAllScreenoutFilters(screenoutLabelId, filters);
+  const allowFilters = await getAllAllowFilters(screenoutLabelId, filters);
+
   const existingScreenout = await findFilterByFrom(screenoutFilters, target);
   if (existingScreenout) await deleteFilter(existingScreenout.id);
 
-  const filterId = await createAllowFilter(target);
+  const filterId = await createAllowFilter(target, allowFilters);
 
-  const query = `from:${target} label:${LABEL_SCREENER}`;
-  const sweep = await sweepMessages(query, ['INBOX'], [screenerLabelId], 500);
-
-  const screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
-  const query2 = `from:${target} label:${LABEL_SCREENOUT}`;
-  await sweepMessages(query2, ['INBOX'], [screenoutLabelId], 500);
+  // Sweep both labels in parallel
+  const [sweep] = await Promise.all([
+    sweepMessages(`from:${target} label:${LABEL_SCREENER}`, ['INBOX'], [screenerLabelId], 500),
+    sweepMessages(`from:${target} label:${LABEL_SCREENOUT}`, ['INBOX'], [screenoutLabelId], 500),
+  ]);
 
   return { success: true, filterId, movedIds: sweep.ids };
 }
 
 async function handleScreenOut(target) {
-  const screenerLabelId = await ensureLabel(LABEL_SCREENER);
-  const screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
+  // Fetch labels and filters once upfront
+  const [screenerLabelId, screenoutLabelId, filters] = await Promise.all([
+    ensureLabel(LABEL_SCREENER),
+    ensureLabel(LABEL_SCREENOUT),
+    getAllFilters(),
+  ]);
 
-  const allowFilters = await getAllAllowFilters();
+  const allowFilters = await getAllAllowFilters(screenoutLabelId, filters);
+  const screenoutFilters = await getAllScreenoutFilters(screenoutLabelId, filters);
+
   const existingAllow = await findFilterByFrom(allowFilters, target);
   if (existingAllow) await deleteFilter(existingAllow.id);
 
-  const filterId = await createScreenoutFilter(target);
+  const filterId = await createScreenoutFilter(target, screenoutLabelId, screenoutFilters);
 
   const query = `from:${target} (label:${LABEL_SCREENER} OR in:inbox)`;
   const sweep = await sweepMessages(
@@ -458,9 +484,12 @@ async function handleScreenOut(target) {
 }
 
 async function handleScreenIn(target) {
-  const screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
+  const [screenoutLabelId, filters] = await Promise.all([
+    ensureLabel(LABEL_SCREENOUT),
+    getAllFilters(),
+  ]);
 
-  const screenoutFilters = await getAllScreenoutFilters();
+  const screenoutFilters = await getAllScreenoutFilters(screenoutLabelId, filters);
   const existing = await findFilterByFrom(screenoutFilters, target);
   if (existing) await deleteFilter(existing.id);
 
@@ -485,10 +514,13 @@ async function handleUndoAllow(target, movedIds) {
 }
 
 async function handleUndoScreenOut(target, movedIds) {
-  const screenerLabelId = await ensureLabel(LABEL_SCREENER);
-  const screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
+  const [screenerLabelId, screenoutLabelId, filters] = await Promise.all([
+    ensureLabel(LABEL_SCREENER),
+    ensureLabel(LABEL_SCREENOUT),
+    getAllFilters(),
+  ]);
 
-  const screenoutFilters = await getAllScreenoutFilters();
+  const screenoutFilters = await getAllScreenoutFilters(screenoutLabelId, filters);
   const existing = await findFilterByFrom(screenoutFilters, target);
   if (existing) await deleteFilter(existing.id);
 
@@ -500,9 +532,12 @@ async function handleUndoScreenOut(target, movedIds) {
 }
 
 async function handleRemoveScreenedOut(target) {
-  const screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
+  const [screenoutLabelId, filters] = await Promise.all([
+    ensureLabel(LABEL_SCREENOUT),
+    getAllFilters(),
+  ]);
 
-  const screenoutFilters = await getAllScreenoutFilters();
+  const screenoutFilters = await getAllScreenoutFilters(screenoutLabelId, filters);
   const existing = await findFilterByFrom(screenoutFilters, target);
   if (existing) await deleteFilter(existing.id);
 
@@ -605,13 +640,12 @@ async function handleMessage(msg) {
       const threadIds = msg.threadIds || [];
       if (threadIds.length === 0) return { success: false, error: 'No threads specified' };
       const labelId = await ensureLabel(labelName);
-      const allMessageIds = [];
-      for (const threadId of threadIds) {
-        const thread = await gmailFetch(`/threads/${threadId}?format=minimal`);
-        for (const m of thread.messages || []) {
-          allMessageIds.push(m.id);
-        }
-      }
+      const threadResults = await Promise.all(
+        threadIds.map((id) => gmailFetch(`/threads/${id}?format=minimal`))
+      );
+      const allMessageIds = threadResults.flatMap(
+        (thread) => (thread.messages || []).map((m) => m.id)
+      );
       if (allMessageIds.length > 0) {
         await modifyMessages(allMessageIds, [labelId], ['INBOX']);
       }
@@ -623,13 +657,12 @@ async function handleMessage(msg) {
       const threadIds = msg.threadIds || [];
       if (threadIds.length === 0) return { success: false, error: 'No threads specified' };
       const labelId = await ensureLabel(labelName);
-      const allMessageIds = [];
-      for (const threadId of threadIds) {
-        const thread = await gmailFetch(`/threads/${threadId}?format=minimal`);
-        for (const m of thread.messages || []) {
-          allMessageIds.push(m.id);
-        }
-      }
+      const threadResults = await Promise.all(
+        threadIds.map((id) => gmailFetch(`/threads/${id}?format=minimal`))
+      );
+      const allMessageIds = threadResults.flatMap(
+        (thread) => (thread.messages || []).map((m) => m.id)
+      );
       if (allMessageIds.length > 0) {
         await modifyMessages(allMessageIds, ['INBOX'], [labelId]);
       }
@@ -644,22 +677,26 @@ async function handleMessage(msg) {
         `/threads?labelIds=${labelId}&maxResults=50`
       );
       if (!result.threads || result.threads.length === 0) return { threads: [] };
-      const threads = [];
-      for (const t of result.threads) {
-        const thread = await gmailFetch(`/threads/${t.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`);
-        const lastMsg = thread.messages?.[thread.messages.length - 1];
-        if (!lastMsg) continue;
-        const headers = lastMsg.payload?.headers || [];
-        const getHeader = (name) => headers.find((h) => h.name === name)?.value || '';
-        threads.push({
-          threadId: t.id,
-          subject: getHeader('Subject'),
-          from: getHeader('From'),
-          date: getHeader('Date'),
-          snippet: thread.snippet || lastMsg.snippet || '',
-        });
-      }
-      return { threads };
+      const threads = await Promise.all(result.threads.map(async (t) => {
+        try {
+          const thread = await gmailFetch(`/threads/${t.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`);
+          const lastMsg = thread.messages?.[thread.messages.length - 1];
+          if (!lastMsg) return null;
+          const headers = lastMsg.payload?.headers || [];
+          const getHeader = (name) => headers.find((h) => h.name === name)?.value || '';
+          return {
+            threadId: t.id,
+            subject: getHeader('Subject'),
+            from: getHeader('From'),
+            date: getHeader('Date'),
+            snippet: thread.snippet || lastMsg.snippet || '',
+          };
+        } catch (err) {
+          console.warn(`[Gmail Screener] Skipping thread ${t.id}:`, err.message);
+          return null;
+        }
+      }));
+      return { threads: threads.filter(Boolean) };
     }
 
     // --- Undo ---
