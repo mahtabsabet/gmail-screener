@@ -313,83 +313,26 @@ async function sweepMessages(query, addLabelIds, removeLabelIds, cap) {
   if (!result.messages || result.messages.length === 0) return { moved: 0, ids: [] };
 
   const ids = result.messages.map((m) => m.id);
-  await batchModifyWithRetry(ids, addLabelIds, removeLabelIds);
+  await modifyMessages(ids, addLabelIds, removeLabelIds);
 
   const hasMore = result.resultSizeEstimate > ids.length || ids.length >= maxResults;
   return { moved: ids.length, ids, hasMore };
 }
 
-/** batchModify with one retry - if an invalid label is detected, delete and recreate it */
-async function batchModifyWithRetry(ids, addLabelIds, removeLabelIds) {
-  try {
-    await gmailFetch('/messages/batchModify', {
-      method: 'POST',
-      body: JSON.stringify({ ids, addLabelIds, removeLabelIds }),
-    });
-  } catch (err) {
-    if (err.message && err.message.includes('Invalid label')) {
-      // Extract the bad label ID from the error, e.g. "Invalid label(s) [Label_34]"
-      const match = err.message.match(/Invalid label\(s\)\s*\[([^\]]+)\]/);
-      const badIds = match ? match[1].split(',').map(s => s.trim()) : [];
-      console.warn('[Gmail Screener] Invalid label(s) in batchModify:', badIds, '- deleting and recreating');
-
-      // Build reverse map so we know which label name each bad ID corresponds to
-      const idToName = {};
-      for (const name of [LABEL_SCREENER, LABEL_SCREENOUT, LABEL_REPLY_LATER, LABEL_SET_ASIDE]) {
-        const key = storageKeyForLabel(name);
-        const stored = await chrome.storage.local.get([key]);
-        if (stored[key]) idToName[stored[key]] = name;
-      }
-
-      // Delete the bad labels from Gmail and clear their cache
-      for (const badId of badIds) {
-        try {
-          await gmailFetch(`/labels/${badId}`, { method: 'DELETE' });
-          console.log(`[Gmail Screener] Deleted corrupt label ${badId}`);
-        } catch (delErr) {
-          console.warn(`[Gmail Screener] Could not delete label ${badId}:`, delErr);
-        }
-        const labelName = idToName[badId];
-        if (labelName) {
-          await chrome.storage.local.remove([storageKeyForLabel(labelName)]);
-        }
-      }
-
-      // Clear the dedup promises so ensureLabel re-fetches
-      for (const name of [LABEL_SCREENER, LABEL_SCREENOUT, LABEL_REPLY_LATER, LABEL_SET_ASIDE]) {
-        ensureLabelPromises[name] = null;
-      }
-
-      // Rebuild all label IDs used in this call
-      const refreshedAdd = await rebuildLabelIds(addLabelIds, idToName);
-      const refreshedRemove = await rebuildLabelIds(removeLabelIds, idToName);
-      await gmailFetch('/messages/batchModify', {
-        method: 'POST',
-        body: JSON.stringify({ ids, addLabelIds: refreshedAdd, removeLabelIds: refreshedRemove }),
-      });
-    } else {
-      throw err;
-    }
+/**
+ * Modify labels on messages. Uses individual messages.modify calls
+ * instead of batchModify to avoid "Invalid label" errors.
+ */
+async function modifyMessages(ids, addLabelIds, removeLabelIds) {
+  if (!ids || ids.length === 0) return;
+  const body = JSON.stringify({ addLabelIds, removeLabelIds });
+  // Process in parallel batches of 10
+  for (let i = 0; i < ids.length; i += 10) {
+    const batch = ids.slice(i, i + 10);
+    await Promise.all(batch.map((id) =>
+      gmailFetch(`/messages/${id}/modify`, { method: 'POST', body })
+    ));
   }
-}
-
-/** Replace any custom label IDs with freshly-resolved ones */
-async function rebuildLabelIds(labelIds, idToName) {
-  if (!labelIds || labelIds.length === 0) return labelIds;
-  const refreshed = [];
-  for (const id of labelIds) {
-    if (!id.startsWith('Label_')) {
-      refreshed.push(id);
-      continue;
-    }
-    const labelName = idToName[id];
-    if (labelName) {
-      refreshed.push(await ensureLabel(labelName));
-    } else {
-      console.warn(`[Gmail Screener] Unknown label ID ${id}, dropping from request`);
-    }
-  }
-  return refreshed;
 }
 
 // ============================================================
@@ -501,7 +444,7 @@ async function handleUndoAllow(target, movedIds) {
   if (existing) await deleteFilter(existing.id);
 
   if (movedIds && movedIds.length > 0) {
-    await batchModifyWithRetry(movedIds, [screenerLabelId], ['INBOX']);
+    await modifyMessages(movedIds, [screenerLabelId], ['INBOX']);
   }
 
   return { success: true };
@@ -516,7 +459,7 @@ async function handleUndoScreenOut(target, movedIds) {
   if (existing) await deleteFilter(existing.id);
 
   if (movedIds && movedIds.length > 0) {
-    await batchModifyWithRetry(movedIds, [screenerLabelId], [screenoutLabelId]);
+    await modifyMessages(movedIds, [screenerLabelId], [screenoutLabelId]);
   }
 
   return { success: true };
@@ -571,7 +514,7 @@ async function continueSweep(query, addLabelIds, removeLabelIds) {
 // ============================================================
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  handleMessageWithRetry(message)
+  handleMessage(message)
     .then(sendResponse)
     .catch((err) => {
       console.error('[Gmail Screener]', err);
@@ -579,46 +522,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     });
   return true;
 });
-
-async function handleMessageWithRetry(msg) {
-  try {
-    return await handleMessage(msg);
-  } catch (err) {
-    if (err.message && err.message.includes('Invalid label')) {
-      console.warn('[Gmail Screener] Invalid label error, nuking all labels and retrying...');
-      await nukeAndRecreateLabels();
-      return await handleMessage(msg);
-    }
-    throw err;
-  }
-}
-
-/** Delete ALL our labels from Gmail and recreate them fresh */
-async function nukeAndRecreateLabels() {
-  const labelsResp = await gmailFetch('/labels');
-  const ourLabelNames = [LABEL_SCREENER, LABEL_SCREENOUT, LABEL_REPLY_LATER, LABEL_SET_ASIDE];
-
-  for (const label of (labelsResp.labels || [])) {
-    if (ourLabelNames.includes(label.name)) {
-      console.log(`[Gmail Screener] Deleting label ${label.name} (${label.id})`);
-      try {
-        await gmailFetch(`/labels/${label.id}`, { method: 'DELETE' });
-      } catch (e) {
-        console.warn(`[Gmail Screener] Could not delete ${label.id}:`, e);
-      }
-    }
-  }
-
-  // Clear all caches and dedup promises
-  await clearAllLabelCaches();
-  for (const name of ourLabelNames) {
-    ensureLabelPromises[name] = null;
-  }
-
-  // Recreate all labels fresh
-  await ensureAllLabels();
-  console.log('[Gmail Screener] All labels recreated successfully');
-}
 
 async function handleMessage(msg) {
   switch (msg.type) {
@@ -676,7 +579,7 @@ async function handleMessage(msg) {
         }
       }
       if (allMessageIds.length > 0) {
-        await batchModifyWithRetry(allMessageIds, [labelId], ['INBOX']);
+        await modifyMessages(allMessageIds, [labelId], ['INBOX']);
       }
       return { success: true, movedIds: allMessageIds };
     }
@@ -694,7 +597,7 @@ async function handleMessage(msg) {
         }
       }
       if (allMessageIds.length > 0) {
-        await batchModifyWithRetry(allMessageIds, ['INBOX'], [labelId]);
+        await modifyMessages(allMessageIds, ['INBOX'], [labelId]);
       }
       return { success: true };
     }
