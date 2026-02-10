@@ -17,7 +17,9 @@ document.addEventListener('DOMContentLoaded', () => {
         signInBtn.style.display = 'none';
         return true;
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn('[Gmail Screener] Auth check failed:', err);
+    }
     authStatusEl.innerHTML =
       '<span class="dot dot-red"></span> Not connected to Gmail';
     signInBtn.style.display = 'inline-block';
