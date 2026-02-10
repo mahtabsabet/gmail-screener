@@ -130,10 +130,7 @@ async function ensureLabel(labelName) {
 }
 
 async function _ensureLabel(labelName) {
-  const cached = await getLabelId(labelName);
-  if (cached) return cached;
-
-  // Search existing
+  // Always verify against the full labels list to avoid stale IDs
   const labelsResp = await gmailFetch('/labels');
   const existing = (labelsResp.labels || []).find(
     (l) => l.name === labelName
@@ -329,11 +326,12 @@ async function batchModifyWithRetry(ids, addLabelIds, removeLabelIds) {
     });
   } catch (err) {
     if (err.message && err.message.includes('Invalid label')) {
-      console.warn('[Gmail Screener] Invalid label in batchModify, refreshing caches and retrying');
+      console.warn('[Gmail Screener] Invalid label in batchModify, refreshing and retrying');
+      // Build reverse map BEFORE clearing cache so we know which name each ID had
+      const idToName = await buildLabelIdToNameMap();
       await clearAllLabelCaches();
-      // Re-resolve all label IDs used in this call
-      const refreshedAdd = await refreshLabelIds(addLabelIds);
-      const refreshedRemove = await refreshLabelIds(removeLabelIds);
+      const refreshedAdd = await refreshLabelIds(addLabelIds, idToName);
+      const refreshedRemove = await refreshLabelIds(removeLabelIds, idToName);
       await gmailFetch('/messages/batchModify', {
         method: 'POST',
         body: JSON.stringify({ ids, addLabelIds: refreshedAdd, removeLabelIds: refreshedRemove }),
@@ -344,31 +342,31 @@ async function batchModifyWithRetry(ids, addLabelIds, removeLabelIds) {
   }
 }
 
-/** Re-resolve label IDs, replacing stale custom label IDs with fresh ones */
-async function refreshLabelIds(labelIds) {
-  if (!labelIds || labelIds.length === 0) return labelIds;
-  const nameById = {};
+async function buildLabelIdToNameMap() {
+  const map = {};
   for (const name of [LABEL_SCREENER, LABEL_SCREENOUT, LABEL_REPLY_LATER, LABEL_SET_ASIDE]) {
     const key = storageKeyForLabel(name);
     const stored = await chrome.storage.local.get([key]);
-    if (stored[key]) nameById[stored[key]] = name;
+    if (stored[key]) map[stored[key]] = name;
   }
+  return map;
+}
+
+/** Re-resolve label IDs, replacing stale custom label IDs with fresh ones */
+async function refreshLabelIds(labelIds, idToName) {
+  if (!labelIds || labelIds.length === 0) return labelIds;
   const refreshed = [];
   for (const id of labelIds) {
-    // System labels (INBOX, SPAM, etc.) are fine as-is
     if (!id.startsWith('Label_')) {
       refreshed.push(id);
       continue;
     }
-    // Check if this ID matches a known label name; if not, try re-resolving by reverse lookup
-    const labelName = nameById[id];
+    const labelName = idToName[id];
     if (labelName) {
       refreshed.push(await ensureLabel(labelName));
     } else {
-      // Unknown custom label - try to find which of our labels had this old ID
-      // by re-ensuring all and seeing which one changed
-      await ensureAllLabels();
-      refreshed.push(id); // keep as-is if we can't figure it out
+      // Can't identify this label - re-ensure all our labels and skip this ID
+      console.warn(`[Gmail Screener] Unknown stale label ID ${id}, skipping`);
     }
   }
   return refreshed;
