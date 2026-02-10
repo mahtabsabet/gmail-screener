@@ -81,6 +81,63 @@
   }
 
   // ============================================================
+  // Thread ID extraction
+  // ============================================================
+
+  /**
+   * Convert a decimal thread ID (from Gmail's jslog) to the hex format
+   * the Gmail API expects. Uses BigInt to handle the large numbers.
+   */
+  function decimalToHex(decStr) {
+    try {
+      return BigInt(decStr).toString(16);
+    } catch (_) {
+      return decStr;
+    }
+  }
+
+  /**
+   * Normalize a raw thread ID value found in the DOM.
+   * Gmail stores IDs as #thread-f:DECIMAL — the API needs hex.
+   */
+  function normalizeThreadId(raw) {
+    if (!raw) return null;
+    // #thread-f:1234567890 → convert decimal to hex
+    const threadFMatch = raw.match(/#thread-f:(\d+)/);
+    if (threadFMatch) return decimalToHex(threadFMatch[1]);
+    // Already looks like a hex or alphanumeric thread ID
+    return raw;
+  }
+
+  function extractThreadId(row) {
+    // Strategy 1: look for <a> links with thread IDs in href
+    for (const a of row.querySelectorAll('a[href*="#"]')) {
+      const href = a.getAttribute('href') || '';
+      const match = href.match(/#(?:inbox|label\/[^/]+|all|search\/[^/]+)\/([A-Za-z0-9_-]{10,})/);
+      if (match) return match[1];
+    }
+    // Strategy 2: data attributes on the row itself
+    for (const attr of ['data-legacy-thread-id', 'data-thread-id', 'data-item-id']) {
+      const val = row.getAttribute(attr);
+      if (val) return normalizeThreadId(val);
+    }
+    // Strategy 3: jslog attribute
+    const jslog = row.getAttribute('jslog') || '';
+    const jslogMatch = jslog.match(/#thread-f:(\d+)/);
+    if (jslogMatch) return decimalToHex(jslogMatch[1]);
+    // Strategy 4: data attributes on child elements
+    for (const el of row.querySelectorAll('[data-thread-id], [data-legacy-thread-id], [data-item-id]')) {
+      const val = el.getAttribute('data-thread-id') || el.getAttribute('data-legacy-thread-id') || el.getAttribute('data-item-id');
+      if (val) return normalizeThreadId(val);
+    }
+    // Strategy 5: data-message-id
+    for (const el of row.querySelectorAll('[data-message-id]')) {
+      return el.getAttribute('data-message-id');
+    }
+    return null;
+  }
+
+  // ============================================================
   // UI injection
   // ============================================================
 
@@ -94,8 +151,13 @@
   const ICON_PERSON_BLOCK = '<svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>';
   const ICON_GLOBE = '<svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95a15.65 15.65 0 00-1.38-3.56A8.03 8.03 0 0118.92 8zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2s.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.987 7.987 0 015.08 16zm2.95-8H5.08a7.987 7.987 0 014.33-3.56A15.65 15.65 0 008.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2s.07-1.35.16-2h4.68c.09.65.16 1.32.16 2s-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 01-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2s-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z"/></svg>';
   const ICON_CHECK = '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+  // Triage icons
+  const ICON_SCHEDULE = '<svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>';
+  const ICON_BOOKMARK = '<svg viewBox="0 0 24 24"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>';
+  const ICON_TRIAGE = '<svg viewBox="0 0 24 24"><path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg>';
 
   let activeDropdown = null;
+  let activeTriageDropdown = null;
 
   function closeActiveDropdown() {
     if (activeDropdown) {
@@ -232,6 +294,169 @@
       document.addEventListener('click', onDocumentClick, true);
       document.addEventListener('keydown', onEscapeKey, true);
     }, 0);
+  }
+
+  function closeActiveTriageDropdown() {
+    if (activeTriageDropdown) {
+      activeTriageDropdown.remove();
+      activeTriageDropdown = null;
+    }
+  }
+
+  function injectTriageButton(row, view) {
+    if (view !== 'inbox') return;
+    if (row.querySelector('.gs-triage-trigger')) return;
+
+    const threadId = extractThreadId(row);
+    if (!threadId) return;
+
+    const container = document.createElement('span');
+    container.className = 'gs-triage-trigger';
+
+    const triggerBtn = document.createElement('button');
+    triggerBtn.className = 'gs-triage-btn';
+    triggerBtn.title = 'Reply Later / Set Aside';
+    triggerBtn.innerHTML = ICON_TRIAGE;
+    triggerBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      showTriageDropdown(row, threadId, container);
+    });
+    container.appendChild(triggerBtn);
+
+    const senderCell =
+      row.querySelector('td.yX') ||
+      row.querySelector('[email]')?.closest('td') ||
+      row.querySelector('td:nth-child(4)') ||
+      row.querySelector('td:nth-child(3)');
+    if (senderCell) {
+      senderCell.appendChild(container);
+    }
+  }
+
+  function showTriageDropdown(row, threadId, anchor) {
+    closeActiveDropdown();
+    closeActiveTriageDropdown();
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'gs-dropdown';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'gs-dropdown-header';
+    header.innerHTML = ICON_TRIAGE + ' TRIAGE';
+    dropdown.appendChild(header);
+
+    // Divider
+    const div1 = document.createElement('div');
+    div1.className = 'gs-dropdown-divider';
+    dropdown.appendChild(div1);
+
+    // Reply Later item
+    const replyLaterItem = document.createElement('button');
+    replyLaterItem.className = 'gs-dropdown-item';
+    replyLaterItem.innerHTML =
+      '<span class="gs-dropdown-icon gs-icon-reply-later">' + ICON_SCHEDULE + '</span>' +
+      '<span><span class="gs-dropdown-label">Reply Later</span><br>' +
+      '<span class="gs-dropdown-sub">Come back and respond</span></span>';
+    replyLaterItem.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      closeActiveTriageDropdown();
+      handleTriage('REPLY_LATER', threadId, row);
+    });
+    dropdown.appendChild(replyLaterItem);
+
+    // Divider
+    const div2 = document.createElement('div');
+    div2.className = 'gs-dropdown-divider';
+    dropdown.appendChild(div2);
+
+    // Set Aside item
+    const setAsideItem = document.createElement('button');
+    setAsideItem.className = 'gs-dropdown-item';
+    setAsideItem.innerHTML =
+      '<span class="gs-dropdown-icon gs-icon-set-aside">' + ICON_BOOKMARK + '</span>' +
+      '<span><span class="gs-dropdown-label">Set Aside</span><br>' +
+      '<span class="gs-dropdown-sub">Keep handy for reference</span></span>';
+    setAsideItem.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      closeActiveTriageDropdown();
+      handleTriage('SET_ASIDE', threadId, row);
+    });
+    dropdown.appendChild(setAsideItem);
+
+    anchor.style.position = 'relative';
+    anchor.appendChild(dropdown);
+    activeTriageDropdown = dropdown;
+
+    setTimeout(() => {
+      const closeHandler = (evt) => {
+        if (activeTriageDropdown && !activeTriageDropdown.contains(evt.target)) {
+          closeActiveTriageDropdown();
+          document.removeEventListener('click', closeHandler, true);
+          document.removeEventListener('keydown', escHandler, true);
+        }
+      };
+      const escHandler = (evt) => {
+        if (evt.key === 'Escape') {
+          closeActiveTriageDropdown();
+          document.removeEventListener('click', closeHandler, true);
+          document.removeEventListener('keydown', escHandler, true);
+        }
+      };
+      document.addEventListener('click', closeHandler, true);
+      document.addEventListener('keydown', escHandler, true);
+    }, 0);
+  }
+
+  async function handleTriage(type, threadId, row) {
+    if (!(await ensureAuth())) return;
+
+    console.log('[Gmail Screener] handleTriage:', type, 'threadId:', threadId);
+    const label = type === 'REPLY_LATER' ? 'Reply Later' : 'Set Aside';
+    try {
+      const resp = await chrome.runtime.sendMessage({ type, threadIds: [threadId] });
+      console.log('[Gmail Screener] handleTriage response:', JSON.stringify(resp));
+      if (resp && resp.success) {
+        row.classList.add('gs-row-exit');
+        setTimeout(() => { row.style.display = 'none'; }, 300);
+        refreshBottomBarCounts();
+        showToast(`Moved to ${label}`, 'success', {
+          action: 'Undo',
+          onAction: () => handleUndoTriage(type, threadId, row, resp.movedIds),
+        });
+      } else {
+        showToast(`Failed: ${resp?.error || 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Error: ${err.message}`, 'error');
+    }
+  }
+
+  async function handleUndoTriage(type, threadId, row, movedIds) {
+    const labelName = type === 'REPLY_LATER' ? 'ReplyLater' : 'SetAside';
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        type: 'MOVE_BACK',
+        labelName,
+        threadIds: [threadId],
+      });
+      if (resp && resp.success) {
+        row.style.display = '';
+        row.classList.remove('gs-row-exit');
+        refreshBottomBarCounts();
+        showToast('Undo successful', 'success');
+      } else {
+        showToast(`Undo failed: ${resp?.error || 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Undo error: ${err.message}`, 'error');
+    }
   }
 
   function escapeHtml(str) {
@@ -520,20 +745,217 @@
   }
 
   // ============================================================
+  // Bottom bar + drawer
+  // ============================================================
+
+  let bottomBarEl = null;
+  let bottomDrawerEl = null;
+  let activeDrawerTab = null; // 'ReplyLater' or 'SetAside'
+
+  function createBottomBar() {
+    if (bottomBarEl) return;
+
+    bottomBarEl = document.createElement('div');
+    bottomBarEl.className = 'gs-bottom-bar';
+
+    const replyTab = document.createElement('button');
+    replyTab.className = 'gs-bottom-tab gs-bottom-tab-reply';
+    replyTab.innerHTML = ICON_SCHEDULE + ' Reply Later <span class="gs-bottom-count" id="gs-reply-count">0</span>';
+    replyTab.addEventListener('click', () => toggleDrawer('ReplyLater'));
+    bottomBarEl.appendChild(replyTab);
+
+    const setAsideTab = document.createElement('button');
+    setAsideTab.className = 'gs-bottom-tab gs-bottom-tab-aside';
+    setAsideTab.innerHTML = ICON_BOOKMARK + ' Set Aside <span class="gs-bottom-count" id="gs-aside-count">0</span>';
+    setAsideTab.addEventListener('click', () => toggleDrawer('SetAside'));
+    bottomBarEl.appendChild(setAsideTab);
+
+    document.body.appendChild(bottomBarEl);
+
+    // Drawer
+    bottomDrawerEl = document.createElement('div');
+    bottomDrawerEl.className = 'gs-bottom-drawer';
+    bottomDrawerEl.innerHTML =
+      '<div class="gs-drawer-header">' +
+        '<span class="gs-drawer-title" id="gs-drawer-title">Reply Later</span>' +
+        '<button class="gs-drawer-close" title="Close">\u00d7</button>' +
+      '</div>' +
+      '<div class="gs-drawer-list" id="gs-drawer-list">' +
+        '<div class="gs-panel-empty">Loading\u2026</div>' +
+      '</div>';
+    document.body.appendChild(bottomDrawerEl);
+
+    bottomDrawerEl.querySelector('.gs-drawer-close').addEventListener('click', closeDrawer);
+
+    refreshBottomBarCounts();
+  }
+
+  function toggleDrawer(labelName) {
+    if (activeDrawerTab === labelName && bottomDrawerEl.classList.contains('gs-drawer-open')) {
+      closeDrawer();
+    } else {
+      openDrawer(labelName);
+    }
+  }
+
+  async function openDrawer(labelName) {
+    activeDrawerTab = labelName;
+    const title = labelName === 'ReplyLater' ? 'Reply Later' : 'Set Aside';
+    document.getElementById('gs-drawer-title').textContent = title;
+
+    // Update active tab styling
+    bottomBarEl.querySelector('.gs-bottom-tab-reply').classList.toggle('gs-tab-active', labelName === 'ReplyLater');
+    bottomBarEl.querySelector('.gs-bottom-tab-aside').classList.toggle('gs-tab-active', labelName === 'SetAside');
+
+    bottomDrawerEl.classList.add('gs-drawer-open');
+    await refreshDrawerList(labelName);
+  }
+
+  function closeDrawer() {
+    activeDrawerTab = null;
+    bottomDrawerEl.classList.remove('gs-drawer-open');
+    bottomBarEl.querySelector('.gs-bottom-tab-reply').classList.remove('gs-tab-active');
+    bottomBarEl.querySelector('.gs-bottom-tab-aside').classList.remove('gs-tab-active');
+  }
+
+  async function refreshBottomBarCounts() {
+    try {
+      const [replyResp, asideResp] = await Promise.all([
+        chrome.runtime.sendMessage({ type: 'GET_LABELED_THREADS', labelName: 'ReplyLater' }),
+        chrome.runtime.sendMessage({ type: 'GET_LABELED_THREADS', labelName: 'SetAside' }),
+      ]);
+      const replyCount = document.getElementById('gs-reply-count');
+      const asideCount = document.getElementById('gs-aside-count');
+      if (replyCount) replyCount.textContent = (replyResp?.threads || []).length;
+      if (asideCount) asideCount.textContent = (asideResp?.threads || []).length;
+    } catch (err) {
+      console.warn('[Gmail Screener] refreshBottomBarCounts failed:', err);
+    }
+  }
+
+  function formatFrom(fromHeader) {
+    // "John Doe <john@example.com>" → "John Doe"
+    const match = fromHeader.match(/^"?([^"<]+)"?\s*</);
+    if (match) return match[1].trim();
+    return fromHeader;
+  }
+
+  function formatDate(dateStr) {
+    try {
+      const d = new Date(dateStr);
+      const now = new Date();
+      if (d.toDateString() === now.toDateString()) {
+        return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      }
+      return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    } catch (_) {
+      return dateStr;
+    }
+  }
+
+  async function refreshDrawerList(labelName) {
+    const listEl = document.getElementById('gs-drawer-list');
+    listEl.innerHTML = '<div class="gs-panel-empty">Loading\u2026</div>';
+
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: 'GET_LABELED_THREADS', labelName });
+      const threads = resp?.threads || [];
+
+      if (threads.length === 0) {
+        const emptyLabel = labelName === 'ReplyLater' ? 'reply later' : 'set aside';
+        listEl.innerHTML = `<div class="gs-panel-empty">No ${emptyLabel} messages.</div>`;
+        return;
+      }
+
+      listEl.innerHTML = '';
+      for (const t of threads) {
+        const row = document.createElement('div');
+        row.className = 'gs-drawer-row';
+
+        const info = document.createElement('a');
+        info.className = 'gs-drawer-info';
+        info.href = `#inbox/${t.threadId}`;
+        info.addEventListener('click', (e) => {
+          e.preventDefault();
+          window.location.hash = `#inbox/${t.threadId}`;
+          closeDrawer();
+        });
+
+        const sender = document.createElement('span');
+        sender.className = 'gs-drawer-sender';
+        sender.textContent = formatFrom(t.from);
+        info.appendChild(sender);
+
+        const subject = document.createElement('span');
+        subject.className = 'gs-drawer-subject';
+        subject.textContent = t.subject || '(no subject)';
+        info.appendChild(subject);
+
+        const snippet = document.createElement('span');
+        snippet.className = 'gs-drawer-snippet';
+        snippet.textContent = t.snippet;
+        info.appendChild(snippet);
+
+        row.appendChild(info);
+
+        const meta = document.createElement('div');
+        meta.className = 'gs-drawer-meta';
+
+        const date = document.createElement('span');
+        date.className = 'gs-drawer-date';
+        date.textContent = formatDate(t.date);
+        meta.appendChild(date);
+
+        const moveBtn = document.createElement('button');
+        moveBtn.className = 'gs-drawer-move';
+        moveBtn.textContent = 'Move to Inbox';
+        moveBtn.addEventListener('click', async () => {
+          moveBtn.disabled = true;
+          moveBtn.textContent = '\u2026';
+          try {
+            await chrome.runtime.sendMessage({
+              type: 'MOVE_BACK',
+              labelName,
+              threadIds: [t.threadId],
+            });
+            await refreshDrawerList(labelName);
+            refreshBottomBarCounts();
+            showToast('Moved back to inbox', 'success');
+          } catch (err) {
+            moveBtn.disabled = false;
+            moveBtn.textContent = 'Move to Inbox';
+            showToast(`Error: ${err.message}`, 'error');
+          }
+        });
+        meta.appendChild(moveBtn);
+
+        row.appendChild(meta);
+        listEl.appendChild(row);
+      }
+    } catch (err) {
+      listEl.innerHTML = '<div class="gs-panel-empty">Failed to load.</div>';
+    }
+  }
+
+  // ============================================================
   // Row processing
   // ============================================================
 
   function processRow(row) {
-    // Always check if buttons are present — Gmail frequently re-renders rows
-    if (row.querySelector('.gs-trigger')) return;
-
     const email = extractSenderEmail(row);
     if (!email) return;
 
     const view = getCurrentView();
     if (view === 'inbox' || view === 'screenout') {
-      injectButton(row, email, view);
+      if (!row.querySelector('.gs-trigger')) {
+        injectButton(row, email, view);
+      }
+      if (!row.querySelector('.gs-triage-trigger')) {
+        injectTriageButton(row, view);
+      }
     }
+
+    row.classList.add('gs-has-action');
   }
 
   function getInboxRows() {
@@ -594,6 +1016,7 @@
   async function init() {
     await checkAuth();
     createPanel();
+    createBottomBar();
     startObserver();
     startPeriodicScan();
     watchUrlChanges();
