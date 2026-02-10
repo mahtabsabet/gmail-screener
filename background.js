@@ -2,8 +2,10 @@
 'use strict';
 
 const GMAIL_API_BASE = 'https://www.googleapis.com/gmail/v1/users/me';
-const DEFAULT_LABEL_NAME = 'Screenout';
-let ensureLabelPromise = null;
+const LABEL_SCREENOUT = 'Screenout';
+const LABEL_REPLY_LATER = 'ReplyLater';
+const LABEL_SET_ASIDE = 'SetAside';
+const ensureLabelPromises = {};
 
 // ============================================================
 // OAuth
@@ -78,50 +80,64 @@ async function gmailFetch(path, options = {}) {
 // Label management
 // ============================================================
 
-async function getScreenoutLabelId() {
-  const stored = await chrome.storage.local.get(['screenoutLabelId']);
-  if (stored.screenoutLabelId) {
+function storageKeyForLabel(labelName) {
+  return `labelId_${labelName}`;
+}
+
+async function getLabelId(labelName) {
+  const key = storageKeyForLabel(labelName);
+  const stored = await chrome.storage.local.get([key]);
+  if (stored[key]) {
     try {
-      await gmailFetch(`/labels/${stored.screenoutLabelId}`);
-      return stored.screenoutLabelId;
+      await gmailFetch(`/labels/${stored[key]}`);
+      return stored[key];
     } catch (err) {
-      console.warn('[Gmail Screener] Cached label no longer exists:', err);
+      console.warn(`[Gmail Screener] Cached label ${labelName} no longer exists:`, err);
     }
   }
   return null;
 }
 
-async function ensureScreenoutLabel() {
-  if (ensureLabelPromise) return ensureLabelPromise;
-  ensureLabelPromise = _ensureScreenoutLabel().finally(() => {
-    ensureLabelPromise = null;
+async function ensureLabel(labelName) {
+  if (ensureLabelPromises[labelName]) return ensureLabelPromises[labelName];
+  ensureLabelPromises[labelName] = _ensureLabel(labelName).finally(() => {
+    ensureLabelPromises[labelName] = null;
   });
-  return ensureLabelPromise;
+  return ensureLabelPromises[labelName];
 }
 
-async function _ensureScreenoutLabel() {
-  const cached = await getScreenoutLabelId();
+async function _ensureLabel(labelName) {
+  const cached = await getLabelId(labelName);
   if (cached) return cached;
 
   const labelsResp = await gmailFetch('/labels');
   const existing = (labelsResp.labels || []).find(
-    (l) => l.name === DEFAULT_LABEL_NAME
+    (l) => l.name === labelName
   );
   if (existing) {
-    await chrome.storage.local.set({ screenoutLabelId: existing.id });
+    await chrome.storage.local.set({ [storageKeyForLabel(labelName)]: existing.id });
     return existing.id;
   }
 
   const newLabel = await gmailFetch('/labels', {
     method: 'POST',
     body: JSON.stringify({
-      name: DEFAULT_LABEL_NAME,
+      name: labelName,
       labelListVisibility: 'labelShow',
       messageListVisibility: 'show',
     }),
   });
-  await chrome.storage.local.set({ screenoutLabelId: newLabel.id });
+  await chrome.storage.local.set({ [storageKeyForLabel(labelName)]: newLabel.id });
   return newLabel.id;
+}
+
+// Backward-compatible aliases
+async function getScreenoutLabelId() {
+  return getLabelId(LABEL_SCREENOUT);
+}
+
+async function ensureScreenoutLabel() {
+  return ensureLabel(LABEL_SCREENOUT);
 }
 
 // ============================================================
@@ -207,7 +223,7 @@ async function moveInboxMessagesToScreenout(email, labelId) {
 
 async function moveScreenoutMessagesToInbox(email, labelId) {
   // TODO: paginate using nextPageToken if a sender has >1000 Screenout messages
-  const query = `from:${email} label:${DEFAULT_LABEL_NAME}`;
+  const query = `from:${email} label:${LABEL_SCREENOUT}`;
   const result = await gmailFetch(
     `/messages?q=${encodeURIComponent(query)}&maxResults=1000`
   );
@@ -292,6 +308,86 @@ async function handleMessage(msg) {
       const labelId = await getScreenoutLabelId();
       if (labelId) await moveScreenoutMessagesToInbox(target, labelId);
       return { success: true };
+    }
+
+    case 'REPLY_LATER':
+    case 'SET_ASIDE': {
+      const labelName = msg.type === 'REPLY_LATER' ? LABEL_REPLY_LATER : LABEL_SET_ASIDE;
+      const threadIds = msg.threadIds || [];
+      if (threadIds.length === 0) return { success: false, error: 'No threads specified' };
+      const labelId = await ensureLabel(labelName);
+      // Collect all message IDs from the threads
+      const allMessageIds = [];
+      for (const threadId of threadIds) {
+        const thread = await gmailFetch(`/threads/${threadId}?format=minimal`);
+        for (const m of thread.messages || []) {
+          allMessageIds.push(m.id);
+        }
+      }
+      if (allMessageIds.length > 0) {
+        await gmailFetch('/messages/batchModify', {
+          method: 'POST',
+          body: JSON.stringify({
+            ids: allMessageIds,
+            addLabelIds: [labelId],
+            removeLabelIds: ['INBOX'],
+          }),
+        });
+      }
+      return { success: true, movedIds: allMessageIds };
+    }
+
+    case 'MOVE_BACK': {
+      const labelName = msg.labelName;
+      const threadIds = msg.threadIds || [];
+      if (threadIds.length === 0) return { success: false, error: 'No threads specified' };
+      const labelId = await getLabelId(labelName);
+      if (!labelId) return { success: false, error: `Label ${labelName} not found` };
+      const allMessageIds = [];
+      for (const threadId of threadIds) {
+        const thread = await gmailFetch(`/threads/${threadId}?format=minimal`);
+        for (const m of thread.messages || []) {
+          allMessageIds.push(m.id);
+        }
+      }
+      if (allMessageIds.length > 0) {
+        await gmailFetch('/messages/batchModify', {
+          method: 'POST',
+          body: JSON.stringify({
+            ids: allMessageIds,
+            addLabelIds: ['INBOX'],
+            removeLabelIds: [labelId],
+          }),
+        });
+      }
+      return { success: true };
+    }
+
+    case 'GET_LABELED_THREADS': {
+      const labelName = msg.labelName;
+      const labelId = await getLabelId(labelName);
+      if (!labelId) return { threads: [] };
+      const result = await gmailFetch(
+        `/threads?labelIds=${labelId}&maxResults=50`
+      );
+      if (!result.threads || result.threads.length === 0) return { threads: [] };
+      // Fetch metadata for each thread
+      const threads = [];
+      for (const t of result.threads) {
+        const thread = await gmailFetch(`/threads/${t.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`);
+        const lastMsg = thread.messages?.[thread.messages.length - 1];
+        if (!lastMsg) continue;
+        const headers = lastMsg.payload?.headers || [];
+        const getHeader = (name) => headers.find((h) => h.name === name)?.value || '';
+        threads.push({
+          threadId: t.id,
+          subject: getHeader('Subject'),
+          from: getHeader('From'),
+          date: getHeader('Date'),
+          snippet: thread.snippet || lastMsg.snippet || '',
+        });
+      }
+      return { threads };
     }
 
     case 'GET_AUTH_STATUS': {
