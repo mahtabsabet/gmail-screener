@@ -83,25 +83,52 @@
   // UI injection
   // ============================================================
 
-  function injectButton(row, email, view) {
-    if (row.querySelector('.gs-action-btn')) return;
+  function getDomain(email) {
+    const at = email.indexOf('@');
+    return at !== -1 ? email.substring(at + 1) : null;
+  }
 
-    const btn = document.createElement('button');
-    btn.className = 'gs-action-btn';
+  function injectButton(row, email, view) {
+    if (row.querySelector('.gs-actions')) return;
+
+    const domain = getDomain(email);
+    const container = document.createElement('span');
+    container.className = 'gs-actions';
 
     if (view === 'screenout') {
-      btn.classList.add('gs-screen-in');
-      btn.textContent = 'Screen in';
-      btn.title = `Move ${email} back to inbox and remove filter`;
-      btn.addEventListener('click', handleClick(() => handleScreenIn(email, row)));
+      const emailBtn = document.createElement('button');
+      emailBtn.className = 'gs-action-btn gs-screen-in';
+      emailBtn.textContent = 'Screen in';
+      emailBtn.title = `Screen in ${email}`;
+      emailBtn.addEventListener('click', handleClick(() => handleScreenIn(email, row, email)));
+      container.appendChild(emailBtn);
+
+      if (domain) {
+        const domainBtn = document.createElement('button');
+        domainBtn.className = 'gs-action-btn gs-screen-in gs-domain-btn';
+        domainBtn.textContent = `@${domain}`;
+        domainBtn.title = `Screen in all of @${domain}`;
+        domainBtn.addEventListener('click', handleClick(() => handleScreenIn(`@${domain}`, row, email)));
+        container.appendChild(domainBtn);
+      }
     } else {
-      btn.classList.add('gs-screen-out');
-      btn.textContent = 'Screen out';
-      btn.title = `Screen out ${email} — skip inbox, send to Screenout`;
-      btn.addEventListener('click', handleClick(() => handleScreenOut(email, row)));
+      const emailBtn = document.createElement('button');
+      emailBtn.className = 'gs-action-btn gs-screen-out';
+      emailBtn.textContent = 'Screen out';
+      emailBtn.title = `Screen out ${email}`;
+      emailBtn.addEventListener('click', handleClick(() => handleScreenOut(email, row, email)));
+      container.appendChild(emailBtn);
+
+      if (domain) {
+        const domainBtn = document.createElement('button');
+        domainBtn.className = 'gs-action-btn gs-screen-out gs-domain-btn';
+        domainBtn.textContent = `@${domain}`;
+        domainBtn.title = `Screen out all of @${domain}`;
+        domainBtn.addEventListener('click', handleClick(() => handleScreenOut(`@${domain}`, row, email)));
+        container.appendChild(domainBtn);
+      }
     }
 
-    // Find a good place to insert — end of sender cell or row
     const senderCell =
       row.querySelector('td.yX') ||
       row.querySelector('[email]')?.closest('td') ||
@@ -109,7 +136,7 @@
       row.querySelector('td:nth-child(3)');
     if (senderCell) {
       senderCell.style.position = 'relative';
-      senderCell.appendChild(btn);
+      senderCell.appendChild(container);
     }
 
     row.classList.add('gs-has-action');
@@ -128,12 +155,21 @@
   // Action handlers
   // ============================================================
 
-  function hideAllRowsFromSender(email) {
+  /** Check if a row's sender matches a target (email or @domain) */
+  function rowMatchesTarget(rowEmail, target) {
+    if (!rowEmail) return false;
+    if (target.startsWith('@')) {
+      return rowEmail.endsWith(target);
+    }
+    return rowEmail === target;
+  }
+
+  function hideMatchingRows(target) {
     const rows = getInboxRows();
     const hidden = [];
     for (const r of rows) {
       const rowEmail = extractSenderEmail(r);
-      if (rowEmail === email) {
+      if (rowMatchesTarget(rowEmail, target)) {
         r.classList.add('gs-row-exit');
         setTimeout(() => { r.style.display = 'none'; }, 300);
         hidden.push(r);
@@ -142,75 +178,69 @@
     return hidden;
   }
 
-  function showAllRowsFromSender(hiddenRows) {
+  function showRows(hiddenRows) {
     for (const r of hiddenRows) {
       r.style.display = '';
       r.classList.remove('gs-row-exit');
     }
   }
 
-  async function handleScreenOut(email, row) {
+  async function handleScreenOut(target, row, rowEmail) {
     if (!(await ensureAuth())) return;
 
-    const btn = row.querySelector('.gs-action-btn');
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'Screening\u2026';
-    }
+    const btns = row.querySelectorAll('.gs-action-btn');
+    for (const b of btns) { b.disabled = true; }
 
     try {
-      const resp = await chrome.runtime.sendMessage({ type: 'SCREEN_OUT', email });
+      const resp = await chrome.runtime.sendMessage({ type: 'SCREEN_OUT', target });
       if (resp && resp.success) {
-        const hiddenRows = hideAllRowsFromSender(email);
+        const hiddenRows = hideMatchingRows(target);
 
-        showToast(`Screened out ${email}`, 'success', {
+        showToast(`Screened out ${target}`, 'success', {
           action: 'Undo',
-          onAction: () => handleUndoScreenOut(email, hiddenRows, resp.movedIds),
+          onAction: () => handleUndoScreenOut(target, hiddenRows, resp.movedIds),
         });
       } else {
         showToast(`Failed: ${resp?.error || 'Unknown error'}`, 'error');
-        resetButton(btn, 'Screen out');
+        for (const b of btns) { b.disabled = false; }
       }
     } catch (err) {
       showToast(`Error: ${err.message}`, 'error');
-      resetButton(btn, 'Screen out');
+      for (const b of btns) { b.disabled = false; }
     }
   }
 
-  async function handleScreenIn(email, row) {
+  async function handleScreenIn(target, row, rowEmail) {
     if (!(await ensureAuth())) return;
 
-    const btn = row.querySelector('.gs-action-btn');
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'Moving\u2026';
-    }
+    const btns = row.querySelectorAll('.gs-action-btn');
+    for (const b of btns) { b.disabled = true; }
 
     try {
-      const resp = await chrome.runtime.sendMessage({ type: 'SCREEN_IN', email });
+      const resp = await chrome.runtime.sendMessage({ type: 'SCREEN_IN', target });
       if (resp && resp.success) {
-        hideAllRowsFromSender(email);
-        showToast(`Screened in ${email} — moved to inbox`, 'success');
+        hideMatchingRows(target);
+        showToast(`Screened in ${target} — moved to inbox`, 'success');
       } else {
         showToast(`Failed: ${resp?.error || 'Unknown error'}`, 'error');
-        resetButton(btn, 'Screen in');
+        for (const b of btns) { b.disabled = false; }
       }
     } catch (err) {
       showToast(`Error: ${err.message}`, 'error');
-      resetButton(btn, 'Screen in');
+      for (const b of btns) { b.disabled = false; }
     }
   }
 
-  async function handleUndoScreenOut(email, hiddenRows, movedIds) {
+  async function handleUndoScreenOut(target, hiddenRows, movedIds) {
     try {
       const resp = await chrome.runtime.sendMessage({
         type: 'UNDO_SCREEN_OUT',
-        email,
+        target,
         movedIds,
       });
       if (resp && resp.success) {
-        showAllRowsFromSender(hiddenRows);
-        showToast(`Undo successful for ${email}`, 'success');
+        showRows(hiddenRows);
+        showToast(`Undo successful for ${target}`, 'success');
       } else {
         showToast(`Undo failed: ${resp?.error || 'Unknown error'}`, 'error');
       }

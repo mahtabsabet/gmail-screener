@@ -227,28 +227,26 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 async function handleMessage(msg) {
   switch (msg.type) {
     case 'SCREEN_OUT': {
-      const email = msg.email.toLowerCase();
+      const target = (msg.target || msg.email).toLowerCase();
       const labelId = await ensureScreenoutLabel();
-      const filterId = await createFilterForSender(email, labelId);
-      const movedIds = await moveInboxMessagesToScreenout(email, labelId);
+      const filterId = await createFilterForSender(target, labelId);
+      const movedIds = await moveInboxMessagesToScreenout(target, labelId);
       return { success: true, filterId, movedIds };
     }
 
     case 'SCREEN_IN': {
-      const email = msg.email.toLowerCase();
-      // Delete the filter so future mail goes to inbox
-      const filter = await findFilterForSender(email);
+      const target = (msg.target || msg.email).toLowerCase();
+      const filter = await findFilterForSender(target);
       if (filter) await deleteFilter(filter.id);
-      // Move existing screened-out messages back to inbox
       const labelId = await getScreenoutLabelId();
-      if (labelId) await moveScreenoutMessagesToInbox(email, labelId);
+      if (labelId) await moveScreenoutMessagesToInbox(target, labelId);
       return { success: true };
     }
 
     case 'UNDO_SCREEN_OUT': {
-      const email = msg.email.toLowerCase();
+      const target = (msg.target || msg.email).toLowerCase();
       const movedIds = msg.movedIds || [];
-      const filter = await findFilterForSender(email);
+      const filter = await findFilterForSender(target);
       if (filter) await deleteFilter(filter.id);
       const labelId = await getScreenoutLabelId();
       if (labelId && movedIds.length > 0) {
@@ -265,13 +263,13 @@ async function handleMessage(msg) {
     }
 
     case 'GET_SCREENED_OUT': {
-      const emails = await getScreenedOutEmails();
-      return { emails };
+      const entries = await getScreenedOutEmails();
+      return { emails: entries };
     }
 
     case 'REMOVE_SCREENED_OUT': {
-      const email = msg.email.toLowerCase();
-      const filter = await findFilterForSender(email);
+      const target = (msg.email || '').toLowerCase();
+      const filter = await findFilterForSender(target);
       if (filter) await deleteFilter(filter.id);
       return { success: true };
     }
