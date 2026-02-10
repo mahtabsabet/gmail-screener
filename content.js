@@ -876,16 +876,21 @@
     bottomBarEl.querySelector('.gs-bottom-tab-aside').classList.remove('gs-tab-active');
   }
 
-  async function refreshBottomBarCounts() {
+  let _countRefreshTimer = null;
+  function refreshBottomBarCounts() {
+    // Debounce: coalesce rapid calls into one (500ms)
+    if (_countRefreshTimer) clearTimeout(_countRefreshTimer);
+    _countRefreshTimer = setTimeout(_doRefreshBottomBarCounts, 500);
+  }
+
+  async function _doRefreshBottomBarCounts() {
+    _countRefreshTimer = null;
     try {
-      const [replyResp, asideResp] = await Promise.all([
-        chrome.runtime.sendMessage({ type: 'GET_LABELED_THREADS', labelName: 'ReplyLater' }),
-        chrome.runtime.sendMessage({ type: 'GET_LABELED_THREADS', labelName: 'SetAside' }),
-      ]);
+      const resp = await chrome.runtime.sendMessage({ type: 'GET_LABEL_COUNTS' });
       const replyCount = document.getElementById('gs-reply-count');
       const asideCount = document.getElementById('gs-aside-count');
-      if (replyCount) replyCount.textContent = (replyResp?.threads || []).length;
-      if (asideCount) asideCount.textContent = (asideResp?.threads || []).length;
+      if (replyCount) replyCount.textContent = resp?.replyLater || 0;
+      if (asideCount) asideCount.textContent = resp?.setAside || 0;
     } catch (err) {
       console.warn('[Gmail Screener] refreshBottomBarCounts failed:', err);
     }

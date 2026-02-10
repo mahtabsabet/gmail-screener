@@ -9,6 +9,9 @@ const LABEL_SET_ASIDE = 'SetAside';
 const DEFAULT_SWEEP_CAP = 200;
 const DEFAULT_FILTER_QUERY = '-is:chat';
 const ensureLabelPromises = {};
+const labelIdCache = {}; // In-memory cache: { labelName: { id, ts } }
+const LABEL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+let cachedAllowedEmails = null; // { emails, ts } - used by periodic sweep
 
 // ============================================================
 // OAuth
@@ -89,6 +92,24 @@ async function gmailFetch(path, options = {}) {
     });
   }
 
+  // Retry on 429 (rate limit) with exponential backoff
+  if (response.status === 429) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const delay = 1000 * Math.pow(2, attempt); // 2s, 4s, 8s
+      console.warn(`[Gmail Screener] Rate limited, retrying in ${delay}ms (attempt ${attempt}/3)`);
+      await new Promise((r) => setTimeout(r, delay));
+      response = await fetch(url, {
+        ...options,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          ...(options.headers || {}),
+        },
+      });
+      if (response.status !== 429) break;
+    }
+  }
+
   if (!response.ok) {
     let body = '';
     try { body = JSON.stringify(await response.json()); } catch (_) {}
@@ -129,16 +150,18 @@ function storageKeyForLabel(labelName) {
 }
 
 async function getLabelId(labelName) {
+  // Fast path: in-memory cache
+  const cached = labelIdCache[labelName];
+  if (cached && (Date.now() - cached.ts) < LABEL_CACHE_TTL) {
+    return cached.id;
+  }
+
   const key = storageKeyForLabel(labelName);
   const stored = await chrome.storage.local.get([key]);
   if (stored[key]) {
-    try {
-      await gmailFetch(`/labels/${stored[key]}`);
-      return stored[key];
-    } catch (err) {
-      console.warn(`[Gmail Screener] Cached label ${labelName} (${stored[key]}) is stale, clearing`, err);
-      await chrome.storage.local.remove([key]);
-    }
+    // Trust storage cache without API verification (ensureLabel will verify if needed)
+    labelIdCache[labelName] = { id: stored[key], ts: Date.now() };
+    return stored[key];
   }
   return null;
 }
@@ -157,12 +180,19 @@ async function ensureLabel(labelName) {
 }
 
 async function _ensureLabel(labelName) {
-  // Fast path: check cached ID and verify it still exists
+  // Fastest path: in-memory cache with TTL (no API call)
+  const cached = labelIdCache[labelName];
+  if (cached && (Date.now() - cached.ts) < LABEL_CACHE_TTL) {
+    return cached.id;
+  }
+
+  // Fast path: check storage-cached ID and verify it still exists
   const key = storageKeyForLabel(labelName);
   const stored = await chrome.storage.local.get([key]);
   if (stored[key]) {
     try {
       await gmailFetch(`/labels/${stored[key]}`);
+      labelIdCache[labelName] = { id: stored[key], ts: Date.now() };
       return stored[key];
     } catch (_) {
       // Cached ID is stale, fall through to full lookup
@@ -176,6 +206,7 @@ async function _ensureLabel(labelName) {
   );
   if (existing) {
     await chrome.storage.local.set({ [key]: existing.id });
+    labelIdCache[labelName] = { id: existing.id, ts: Date.now() };
     console.log(`[Gmail Screener] Label ${labelName} => ${existing.id}`);
     return existing.id;
   }
@@ -190,6 +221,7 @@ async function _ensureLabel(labelName) {
     }),
   });
   await chrome.storage.local.set({ [key]: newLabel.id });
+  labelIdCache[labelName] = { id: newLabel.id, ts: Date.now() };
   console.log(`[Gmail Screener] Label ${labelName} => ${newLabel.id} (created)`);
   return newLabel.id;
 }
@@ -208,9 +240,22 @@ async function ensureAllLabels() {
 // Filter management
 // ============================================================
 
+let filtersCache = null; // { filters, ts }
+const FILTERS_CACHE_TTL = 30 * 1000; // 30 seconds
+
+function invalidateFiltersCache() {
+  filtersCache = null;
+  cachedAllowedEmails = null;
+}
+
 async function getAllFilters() {
+  if (filtersCache && (Date.now() - filtersCache.ts) < FILTERS_CACHE_TTL) {
+    return filtersCache.filters;
+  }
   const resp = await gmailFetch('/settings/filters');
-  return resp.filter || [];
+  const filters = resp.filter || [];
+  filtersCache = { filters, ts: Date.now() };
+  return filters;
 }
 
 /** Find all screenout filters (filters that add Screenout label with a from: criteria) */
@@ -223,15 +268,17 @@ async function getAllScreenoutFilters(screenoutLabelId, filters) {
   });
 }
 
-/** Find all allow filters (filters that add INBOX with a from: criteria, but don't add Screenout) */
-async function getAllAllowFilters(screenoutLabelId, filters) {
+/** Find all allow filters (filters that remove Screener label with a from: criteria) */
+async function getAllAllowFilters(screenoutLabelId, screenerLabelId, filters) {
   if (!screenoutLabelId) screenoutLabelId = await ensureLabel(LABEL_SCREENOUT);
+  if (!screenerLabelId) screenerLabelId = await ensureLabel(LABEL_SCREENER);
   if (!filters) filters = await getAllFilters();
   return filters.filter((f) => {
     if (!f.criteria || !f.criteria.from) return false;
+    const removeIds = f.action?.removeLabelIds || [];
     const addIds = f.action?.addLabelIds || [];
-    // Allow filter: adds INBOX but doesn't add Screenout
-    return addIds.includes('INBOX') && !addIds.includes(screenoutLabelId);
+    // Allow filter: removes Screener label but doesn't add Screenout
+    return removeIds.includes(screenerLabelId) && !addIds.includes(screenoutLabelId);
   });
 }
 
@@ -241,7 +288,11 @@ async function getScreenedOutEmails() {
 }
 
 async function getAllowedEmails() {
-  const filters = await getAllAllowFilters();
+  const [screenoutLabelId, screenerLabelId] = await Promise.all([
+    ensureLabel(LABEL_SCREENOUT),
+    ensureLabel(LABEL_SCREENER),
+  ]);
+  const filters = await getAllAllowFilters(screenoutLabelId, screenerLabelId);
   return filters.map((f) => f.criteria.from.toLowerCase());
 }
 
@@ -255,6 +306,7 @@ async function findFilterByFrom(allFilters, email) {
 async function deleteFilter(filterId) {
   try {
     await gmailFetch(`/settings/filters/${filterId}`, { method: 'DELETE' });
+    invalidateFiltersCache();
   } catch (err) {
     if (!err.message?.includes('404')) {
       console.warn('[Gmail Screener] deleteFilter failed:', err);
@@ -281,6 +333,7 @@ async function createDefaultRoutingFilter() {
       },
     }),
   });
+  invalidateFiltersCache();
   await saveSettings({ defaultFilterId: filter.id });
   return filter.id;
 }
@@ -298,26 +351,31 @@ async function removeDefaultRoutingFilter() {
 // ============================================================
 
 /**
- * Create an allow filter: adds INBOX for this sender.
- * Note: Gmail filters API only allows system labels in removeLabelIds,
- * so we handle custom label removal (Screener/Screenout) via sweeps.
+ * Create an allow filter: counteracts the default routing filter for this sender.
+ * Gmail filters API doesn't allow 'INBOX' in addLabelIds, so the allow filter
+ * removes the Screener label (counteracting the default filter that adds it).
+ * INBOX restoration for new mail is handled by the periodic allowed-senders sweep.
+ * Existing messages are swept to INBOX immediately in handleAllow().
  */
-async function createAllowFilter(target, existingAllowFilters) {
+async function createAllowFilter(target, existingAllowFilters, screenerLabelId) {
   // Check if allow filter already exists
   if (existingAllowFilters) {
     const existing = await findFilterByFrom(existingAllowFilters, target);
     if (existing) return existing.id;
   }
 
+  if (!screenerLabelId) screenerLabelId = await ensureLabel(LABEL_SCREENER);
+
   const filter = await gmailFetch('/settings/filters', {
     method: 'POST',
     body: JSON.stringify({
       criteria: { from: target },
       action: {
-        addLabelIds: ['INBOX'],
+        removeLabelIds: [screenerLabelId],
       },
     }),
   });
+  invalidateFiltersCache();
   return filter.id;
 }
 
@@ -344,6 +402,7 @@ async function createScreenoutFilter(target, screenoutLabelId, existingScreenout
       },
     }),
   });
+  invalidateFiltersCache();
   return filter.id;
 }
 
@@ -392,6 +451,7 @@ async function enableScreenerMode(sweepInbox) {
 
   await createDefaultRoutingFilter();
   await saveSettings({ screenerEnabled: true });
+  await updateSweepAlarm();
 
   let sweepResult = null;
   if (sweepInbox) {
@@ -411,6 +471,7 @@ async function enableScreenerMode(sweepInbox) {
 async function disableScreenerMode(restoreToInbox) {
   await removeDefaultRoutingFilter();
   await saveSettings({ screenerEnabled: false });
+  await updateSweepAlarm();
 
   let sweepResult = null;
   if (restoreToInbox) {
@@ -440,12 +501,12 @@ async function handleAllow(target) {
   ]);
 
   const screenoutFilters = await getAllScreenoutFilters(screenoutLabelId, filters);
-  const allowFilters = await getAllAllowFilters(screenoutLabelId, filters);
+  const allowFilters = await getAllAllowFilters(screenoutLabelId, screenerLabelId, filters);
 
   const existingScreenout = await findFilterByFrom(screenoutFilters, target);
   if (existingScreenout) await deleteFilter(existingScreenout.id);
 
-  const filterId = await createAllowFilter(target, allowFilters);
+  const filterId = await createAllowFilter(target, allowFilters, screenerLabelId);
 
   // Sweep both labels in parallel
   const [sweep] = await Promise.all([
@@ -464,7 +525,7 @@ async function handleScreenOut(target) {
     getAllFilters(),
   ]);
 
-  const allowFilters = await getAllAllowFilters(screenoutLabelId, filters);
+  const allowFilters = await getAllAllowFilters(screenoutLabelId, screenerLabelId, filters);
   const screenoutFilters = await getAllScreenoutFilters(screenoutLabelId, filters);
 
   const existingAllow = await findFilterByFrom(allowFilters, target);
@@ -500,9 +561,12 @@ async function handleScreenIn(target) {
 }
 
 async function handleUndoAllow(target, movedIds) {
-  const screenerLabelId = await ensureLabel(LABEL_SCREENER);
+  const [screenerLabelId, screenoutLabelId] = await Promise.all([
+    ensureLabel(LABEL_SCREENER),
+    ensureLabel(LABEL_SCREENOUT),
+  ]);
 
-  const allowFilters = await getAllAllowFilters();
+  const allowFilters = await getAllAllowFilters(screenoutLabelId, screenerLabelId);
   const existing = await findFilterByFrom(allowFilters, target);
   if (existing) await deleteFilter(existing.id);
 
@@ -548,7 +612,11 @@ async function handleRemoveScreenedOut(target) {
 }
 
 async function handleRemoveAllowed(target) {
-  const allowFilters = await getAllAllowFilters();
+  const [screenoutLabelId, screenerLabelId] = await Promise.all([
+    ensureLabel(LABEL_SCREENOUT),
+    ensureLabel(LABEL_SCREENER),
+  ]);
+  const allowFilters = await getAllAllowFilters(screenoutLabelId, screenerLabelId);
   const existing = await findFilterByFrom(allowFilters, target);
   if (existing) await deleteFilter(existing.id);
   return { success: true };
@@ -577,6 +645,70 @@ async function continueSweep(query, addLabelIds, removeLabelIds) {
   const settings = await getSettings();
   return sweepMessages(query, addLabelIds, removeLabelIds, settings.sweepCap || DEFAULT_SWEEP_CAP);
 }
+
+// ============================================================
+// Periodic sweep for allowed senders
+// ============================================================
+// Because Gmail filters can't add INBOX via addLabelIds, the allow filter
+// only removes the Screener label. New mail from allowed senders ends up
+// with no INBOX and no Screener (in "All Mail" limbo). This periodic sweep
+// finds those messages and moves them to INBOX.
+
+const ALLOWED_SWEEP_ALARM = 'allowedSendersSweep';
+
+const ALLOWED_CACHE_TTL = 60 * 1000; // 1 minute
+
+async function sweepAllowedSenders() {
+  const settings = await getSettings();
+  if (!settings.screenerEnabled) return;
+
+  try {
+    // Use cached allowed emails to avoid extra API calls
+    let allowedEmails;
+    if (cachedAllowedEmails && (Date.now() - cachedAllowedEmails.ts) < ALLOWED_CACHE_TTL) {
+      allowedEmails = cachedAllowedEmails.emails;
+    } else {
+      allowedEmails = await getAllowedEmails();
+      cachedAllowedEmails = { emails: allowedEmails, ts: Date.now() };
+    }
+    if (allowedEmails.length === 0) return;
+
+    // Build a query to find messages from allowed senders that are
+    // not in INBOX and not in Screener and not in Screenout (i.e., in limbo)
+    // Process in batches to avoid query length limits
+    const batchSize = 20;
+    for (let i = 0; i < allowedEmails.length; i += batchSize) {
+      const batch = allowedEmails.slice(i, i + batchSize);
+      const fromClause = batch.map((e) => `from:${e}`).join(' OR ');
+      const query = `(${fromClause}) -in:inbox -in:trash -in:spam -label:${LABEL_SCREENER} -label:${LABEL_SCREENOUT} newer_than:1d`;
+      await sweepMessages(query, ['INBOX'], [], 100);
+    }
+    console.log(`[Gmail Screener] Allowed-senders sweep done (${allowedEmails.length} senders)`);
+  } catch (err) {
+    console.warn('[Gmail Screener] Allowed-senders sweep failed:', err.message);
+  }
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ALLOWED_SWEEP_ALARM) {
+    sweepAllowedSenders();
+  }
+});
+
+// Start/stop the periodic sweep alarm based on screener state
+async function updateSweepAlarm() {
+  const settings = await getSettings();
+  if (settings.screenerEnabled) {
+    chrome.alarms.create(ALLOWED_SWEEP_ALARM, { periodInMinutes: 5 });
+    console.log('[Gmail Screener] Allowed-senders sweep alarm started');
+  } else {
+    chrome.alarms.clear(ALLOWED_SWEEP_ALARM);
+    console.log('[Gmail Screener] Allowed-senders sweep alarm stopped');
+  }
+}
+
+// On service worker startup, configure the alarm
+updateSweepAlarm();
 
 // ============================================================
 // Message handler
@@ -721,6 +853,21 @@ async function handleMessage(msg) {
 
     case 'GET_SCREENER_COUNT':
       return getScreenerCount();
+
+    case 'GET_LABEL_COUNTS': {
+      const [rlId, saId] = await Promise.all([
+        getLabelId(LABEL_REPLY_LATER),
+        getLabelId(LABEL_SET_ASIDE),
+      ]);
+      const [rlLabel, saLabel] = await Promise.all([
+        rlId ? gmailFetch(`/labels/${rlId}`) : null,
+        saId ? gmailFetch(`/labels/${saId}`) : null,
+      ]);
+      return {
+        replyLater: rlLabel?.threadsTotal || 0,
+        setAside: saLabel?.threadsTotal || 0,
+      };
+    }
 
     // --- Continue sweep ---
     case 'CONTINUE_SWEEP':
