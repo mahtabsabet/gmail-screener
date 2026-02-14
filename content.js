@@ -14,7 +14,11 @@
   // ============================================================
 
   function getCurrentView() {
-    const hash = location.hash || '';
+    const hash = decodeURIComponent(location.hash || '');
+    if (/label\/Gatekeeper\/Screener\b/i.test(hash)) return 'screener';
+    if (/label\/Gatekeeper\/Set Aside\b/i.test(hash)) return 'setaside';
+    if (/label\/Gatekeeper\/Reply Later\b/i.test(hash)) return 'replylater';
+    // Legacy label URLs (pre-Gatekeeper)
     if (/label\/Screener\b/i.test(hash)) return 'screener';
     if (/label\/SetAside/i.test(hash)) return 'setaside';
     if (/label\/ReplyLater/i.test(hash)) return 'replylater';
@@ -462,27 +466,37 @@
 
     console.log('[Gmail Screener] handleTriage:', type, 'threadId:', threadId);
     const label = type === 'REPLY_LATER' ? 'Reply Later' : 'Set Aside';
+
+    // Optimistic UI update: hide the row immediately
+    row.classList.add('gs-row-exit');
+    const origDisplay = row.style.display;
+    setTimeout(() => { row.style.display = 'none'; }, 300);
+
     try {
       const resp = await chrome.runtime.sendMessage({ type, threadIds: [threadId] });
       console.log('[Gmail Screener] handleTriage response:', JSON.stringify(resp));
       if (resp && resp.success) {
-        row.classList.add('gs-row-exit');
-        setTimeout(() => { row.style.display = 'none'; }, 300);
         refreshBottomBarCounts();
         showToast(`Moved to ${label}`, 'success', {
           action: 'Undo',
           onAction: () => handleUndoTriage(type, threadId, row, resp.movedIds),
         });
       } else {
+        // Rollback: restore the row on failure
+        row.style.display = origDisplay;
+        row.classList.remove('gs-row-exit');
         showToast(`Failed: ${resp?.error || 'Unknown error'}`, 'error');
       }
     } catch (err) {
+      // Rollback: restore the row on error
+      row.style.display = origDisplay;
+      row.classList.remove('gs-row-exit');
       showToast(`Error: ${err.message}`, 'error');
     }
   }
 
   async function handleUndoTriage(type, threadId, row, movedIds) {
-    const labelName = type === 'REPLY_LATER' ? 'ReplyLater' : 'SetAside';
+    const labelName = type === 'REPLY_LATER' ? 'Gatekeeper/Reply Later' : 'Gatekeeper/Set Aside';
     try {
       const resp = await chrome.runtime.sendMessage({
         type: 'MOVE_BACK',
@@ -689,13 +703,13 @@
     const replyTab = document.createElement('button');
     replyTab.className = 'gs-bottom-tab gs-bottom-tab-reply';
     replyTab.innerHTML = ICON_SCHEDULE + ' Reply Later <span class="gs-bottom-count" id="gs-reply-count">0</span>';
-    replyTab.addEventListener('click', () => toggleDrawer('ReplyLater'));
+    replyTab.addEventListener('click', () => toggleDrawer('Gatekeeper/Reply Later'));
     bottomBarEl.appendChild(replyTab);
 
     const setAsideTab = document.createElement('button');
     setAsideTab.className = 'gs-bottom-tab gs-bottom-tab-aside';
     setAsideTab.innerHTML = ICON_BOOKMARK + ' Set Aside <span class="gs-bottom-count" id="gs-aside-count">0</span>';
-    setAsideTab.addEventListener('click', () => toggleDrawer('SetAside'));
+    setAsideTab.addEventListener('click', () => toggleDrawer('Gatekeeper/Set Aside'));
     bottomBarEl.appendChild(setAsideTab);
 
     document.body.appendChild(bottomBarEl);
@@ -727,11 +741,11 @@
 
   async function openDrawer(labelName) {
     activeDrawerTab = labelName;
-    const title = labelName === 'ReplyLater' ? 'Reply Later' : 'Set Aside';
+    const title = labelName.includes('Reply Later') ? 'Reply Later' : 'Set Aside';
     document.getElementById('gs-drawer-title').textContent = title;
 
-    bottomBarEl.querySelector('.gs-bottom-tab-reply').classList.toggle('gs-tab-active', labelName === 'ReplyLater');
-    bottomBarEl.querySelector('.gs-bottom-tab-aside').classList.toggle('gs-tab-active', labelName === 'SetAside');
+    bottomBarEl.querySelector('.gs-bottom-tab-reply').classList.toggle('gs-tab-active', labelName.includes('Reply Later'));
+    bottomBarEl.querySelector('.gs-bottom-tab-aside').classList.toggle('gs-tab-active', labelName.includes('Set Aside'));
 
     bottomDrawerEl.classList.add('gs-drawer-open');
     await refreshDrawerList(labelName);
@@ -792,7 +806,7 @@
       const threads = resp?.threads || [];
 
       if (threads.length === 0) {
-        const emptyLabel = labelName === 'ReplyLater' ? 'reply later' : 'set aside';
+        const emptyLabel = labelName.includes('Reply Later') ? 'reply later' : 'set aside';
         listEl.innerHTML = `<div class="gs-panel-empty">No ${emptyLabel} messages.</div>`;
         return;
       }

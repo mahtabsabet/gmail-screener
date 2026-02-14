@@ -189,12 +189,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   openScreener.addEventListener('click', (e) => {
     e.preventDefault();
-    openGmailLabel('#label/Screener');
+    openGmailLabel('#label/Gatekeeper%2FScreener');
   });
 
   openSetAside.addEventListener('click', (e) => {
     e.preventDefault();
-    openGmailLabel('#label/SetAside');
+    openGmailLabel('#label/Gatekeeper%2FSet+Aside');
   });
 
   openOptionsLink.addEventListener('click', (e) => {

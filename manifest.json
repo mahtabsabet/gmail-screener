@@ -6,7 +6,8 @@
   "permissions": [
     "identity",
     "storage",
-    "tabs"
+    "tabs",
+    "alarms"
   ],
   "host_permissions": [
     "https://mail.google.com/*",
