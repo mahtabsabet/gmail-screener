@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session.js';
-import { setThreadFolder, archiveThread, removeThreadState } from '@/lib/db.js';
+import { setThreadFolder, archiveThread, removeThreadState, getThreadState } from '@/lib/db.js';
+import { getLabelIdForFolder, modifyThreadLabels } from '@/lib/gmail.js';
 
 export async function POST(request) {
   const userId = await getSession();
@@ -11,28 +12,68 @@ export async function POST(request) {
     return NextResponse.json({ error: 'threadId and action required' }, { status: 400 });
   }
 
-  switch (action) {
-    case 'REPLY_LATER':
-      setThreadFolder(userId, threadId, 'REPLY_LATER');
-      return NextResponse.json({ success: true });
+  try {
+    switch (action) {
+      case 'REPLY_LATER':
+      case 'SET_ASIDE': {
+        const folder = action; // 'REPLY_LATER' or 'SET_ASIDE'
 
-    case 'SET_ASIDE':
-      setThreadFolder(userId, threadId, 'SET_ASIDE');
-      return NextResponse.json({ success: true });
+        // Remove previous Gmail label if thread was in a different folder
+        const prev = getThreadState(userId, threadId);
+        if (prev && prev.folder !== folder && prev.folder !== 'IMBOX') {
+          const oldLabelId = await getLabelIdForFolder(userId, prev.folder);
+          if (oldLabelId) {
+            await modifyThreadLabels(userId, threadId, [], [oldLabelId]);
+          }
+        }
 
-    case 'MOVE_TO_IMBOX':
-      setThreadFolder(userId, threadId, 'IMBOX');
-      return NextResponse.json({ success: true });
+        // Add new Gmail label and remove INBOX
+        const labelId = await getLabelIdForFolder(userId, folder);
+        if (labelId) {
+          await modifyThreadLabels(userId, threadId, [labelId], ['INBOX']);
+        }
 
-    case 'ARCHIVE':
-      archiveThread(userId, threadId);
-      return NextResponse.json({ success: true });
+        setThreadFolder(userId, threadId, folder);
+        return NextResponse.json({ success: true });
+      }
 
-    case 'REMOVE':
-      removeThreadState(userId, threadId);
-      return NextResponse.json({ success: true });
+      case 'MOVE_TO_IMBOX': {
+        // Remove the triage Gmail label and restore INBOX
+        const prev = getThreadState(userId, threadId);
+        if (prev && prev.folder !== 'IMBOX') {
+          const oldLabelId = await getLabelIdForFolder(userId, prev.folder);
+          if (oldLabelId) {
+            await modifyThreadLabels(userId, threadId, ['INBOX'], [oldLabelId]);
+          }
+        }
 
-    default:
-      return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
+        setThreadFolder(userId, threadId, 'IMBOX');
+        return NextResponse.json({ success: true });
+      }
+
+      case 'ARCHIVE': {
+        // Remove triage label when archiving
+        const prev = getThreadState(userId, threadId);
+        if (prev && prev.folder !== 'IMBOX') {
+          const oldLabelId = await getLabelIdForFolder(userId, prev.folder);
+          if (oldLabelId) {
+            await modifyThreadLabels(userId, threadId, [], [oldLabelId, 'INBOX']);
+          }
+        }
+
+        archiveThread(userId, threadId);
+        return NextResponse.json({ success: true });
+      }
+
+      case 'REMOVE':
+        removeThreadState(userId, threadId);
+        return NextResponse.json({ success: true });
+
+      default:
+        return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
+    }
+  } catch (err) {
+    console.error('Triage error:', err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

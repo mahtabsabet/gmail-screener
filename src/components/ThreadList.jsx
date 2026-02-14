@@ -28,8 +28,15 @@ export default function ThreadList({ threads, actions, onThreadClick, emptyMessa
       {threads.map((thread) => (
         <div
           key={thread.threadId}
-          className="flex items-center gap-4 px-6 py-3 hover:bg-gray-50 transition-colors group"
+          className={`flex items-center gap-4 px-6 py-3 hover:bg-gray-50 transition-colors group ${thread.isUnread ? 'bg-white' : 'bg-gray-50/40'}`}
         >
+          {/* Unread indicator */}
+          <div className="w-2 flex-shrink-0">
+            {thread.isUnread && (
+              <div className="w-2 h-2 rounded-full bg-blue-600" />
+            )}
+          </div>
+
           {/* Sender avatar */}
           <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-semibold flex-shrink-0">
             {(thread.fromName || thread.fromEmail || '?')[0].toUpperCase()}
@@ -41,14 +48,14 @@ export default function ThreadList({ threads, actions, onThreadClick, emptyMessa
             className="flex-1 min-w-0 text-left"
           >
             <div className="flex items-center gap-2">
-              <span className="font-medium text-sm text-gray-900 truncate">
+              <span className={`text-sm truncate ${thread.isUnread ? 'font-semibold text-gray-900' : 'font-medium text-gray-600'}`}>
                 {thread.fromName || thread.fromEmail}
               </span>
               <span className="text-xs text-gray-400 flex-shrink-0">
                 {formatDate(thread.date)}
               </span>
             </div>
-            <div className="text-sm text-gray-700 truncate">
+            <div className={`text-sm truncate ${thread.isUnread ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
               {thread.subject}
             </div>
             <div className="text-xs text-gray-400 truncate">
