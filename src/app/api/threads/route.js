@@ -66,6 +66,9 @@ export async function GET(request) {
         } else if (view === 'imbox') {
           // Show only approved senders
           if (isApproved) threads.push(summary);
+        } else if (view === 'screened_out') {
+          // Show only denied senders
+          if (isDenied) threads.push(summary);
         } else {
           // No filter — return all
           threads.push({ ...summary, senderStatus: isApproved ? 'APPROVED' : isDenied ? 'DENIED' : null });
