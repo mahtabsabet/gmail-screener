@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session.js';
 import { getSenderStatus, getAllApprovedEmails, getAllDeniedEmails, getThreadsByFolder } from '@/lib/db.js';
-import { listInboxThreads, listSentThreads, getThread, getThreadFull, parseThreadSummary, parseFullThread } from '@/lib/gmail.js';
+import { listInboxThreads, listSentThreads, getThread, getThreadsBatch, getThreadFull, parseThreadSummary, parseFullThread } from '@/lib/gmail.js';
 
 export async function GET(request) {
   const userId = await getSession();
@@ -28,16 +28,8 @@ export async function GET(request) {
     const rows = getThreadsByFolder(userId, folder);
     if (rows.length === 0) return NextResponse.json({ threads: [] });
 
-    const threads = [];
-    for (const row of rows) {
-      try {
-        const thread = await getThread(userId, row.thread_id);
-        const summary = parseThreadSummary(thread);
-        if (summary) threads.push(summary);
-      } catch (err) {
-        console.warn(`Skipping thread ${row.thread_id}:`, err.message);
-      }
-    }
+    const rawThreads = await getThreadsBatch(userId, rows.map(r => r.thread_id));
+    const threads = rawThreads.map(parseThreadSummary).filter(Boolean);
     return NextResponse.json({ threads });
   }
 
@@ -47,16 +39,8 @@ export async function GET(request) {
       const threadList = await listSentThreads(userId);
       if (threadList.length === 0) return NextResponse.json({ threads: [] });
 
-      const threads = [];
-      for (const t of threadList) {
-        try {
-          const thread = await getThread(userId, t.id);
-          const summary = parseThreadSummary(thread);
-          if (summary) threads.push(summary);
-        } catch (err) {
-          console.warn(`Skipping thread ${t.id}:`, err.message);
-        }
-      }
+      const rawThreads = await getThreadsBatch(userId, threadList.map(t => t.id));
+      const threads = rawThreads.map(parseThreadSummary).filter(Boolean);
       return NextResponse.json({ threads });
     } catch (err) {
       return NextResponse.json({ error: err.message }, { status: 500 });
@@ -71,32 +55,24 @@ export async function GET(request) {
     const approved = new Set(getAllApprovedEmails(userId));
     const denied = new Set(getAllDeniedEmails(userId));
 
+    const rawThreads = await getThreadsBatch(userId, threadList.map(t => t.id));
     const threads = [];
-    for (const t of threadList) {
-      try {
-        const thread = await getThread(userId, t.id);
-        const summary = parseThreadSummary(thread);
-        if (!summary) continue;
+    for (const thread of rawThreads) {
+      const summary = parseThreadSummary(thread);
+      if (!summary) continue;
 
-        const email = summary.fromEmail;
-        const isApproved = approved.has(email);
-        const isDenied = denied.has(email);
+      const email = summary.fromEmail;
+      const isApproved = approved.has(email);
+      const isDenied = denied.has(email);
 
-        if (view === 'screener') {
-          // Show only unknown senders (not approved, not denied)
-          if (!isApproved && !isDenied) threads.push(summary);
-        } else if (view === 'imbox') {
-          // Show only approved senders
-          if (isApproved) threads.push(summary);
-        } else if (view === 'screened_out') {
-          // Show only denied senders
-          if (isDenied) threads.push(summary);
-        } else {
-          // No filter — return all
-          threads.push({ ...summary, senderStatus: isApproved ? 'APPROVED' : isDenied ? 'DENIED' : null });
-        }
-      } catch (err) {
-        console.warn(`Skipping thread ${t.id}:`, err.message);
+      if (view === 'screener') {
+        if (!isApproved && !isDenied) threads.push(summary);
+      } else if (view === 'imbox') {
+        if (isApproved) threads.push(summary);
+      } else if (view === 'screened_out') {
+        if (isDenied) threads.push(summary);
+      } else {
+        threads.push({ ...summary, senderStatus: isApproved ? 'APPROVED' : isDenied ? 'DENIED' : null });
       }
     }
 

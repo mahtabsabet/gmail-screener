@@ -87,6 +87,30 @@ export async function getThread(userId, threadId) {
   return res.data;
 }
 
+// Fetch multiple threads in parallel with concurrency limit
+export async function getThreadsBatch(userId, threadIds, concurrency = 10) {
+  const gmail = getGmailClient(userId);
+  const results = [];
+  for (let i = 0; i < threadIds.length; i += concurrency) {
+    const batch = threadIds.slice(i, i + concurrency);
+    const batchResults = await Promise.allSettled(
+      batch.map(id =>
+        gmail.users.threads.get({
+          userId: 'me',
+          id,
+          format: 'metadata',
+          metadataHeaders: ['From', 'To', 'Subject', 'Date', 'Message-ID', 'References', 'In-Reply-To'],
+        }).then(res => res.data)
+      )
+    );
+    for (const r of batchResults) {
+      if (r.status === 'fulfilled') results.push(r.value);
+      else console.warn('Skipping thread:', r.reason?.message);
+    }
+  }
+  return results;
+}
+
 export async function getThreadFull(userId, threadId) {
   const gmail = getGmailClient(userId);
   const res = await gmail.users.threads.get({
