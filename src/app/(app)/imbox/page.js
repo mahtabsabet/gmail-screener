@@ -3,11 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import ThreadList, { ActionButton } from '@/components/ThreadList';
 import FocusReply from '@/components/FocusReply';
+import ContactCard from '@/components/ContactCard';
 
 export default function ImboxPage() {
   const [threads, setThreads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [focusThread, setFocusThread] = useState(null);
+  const [contactCard, setContactCard] = useState(null);
 
   const fetchThreads = useCallback(async () => {
     setLoading(true);
@@ -56,6 +58,7 @@ export default function ImboxPage() {
         <ThreadList
           threads={threads}
           onThreadClick={openThread}
+          onSenderClick={setContactCard}
           emptyMessage="Your Imbox is empty. Approve senders in the Screener to see emails here."
           actions={(thread) => (
             <>
@@ -87,9 +90,22 @@ export default function ImboxPage() {
         <FocusReply
           thread={focusThread}
           onClose={() => setFocusThread(null)}
+          onSenderClick={setContactCard}
           onReplySent={() => {
             setFocusThread(null);
             fetchThreads();
+          }}
+        />
+      )}
+
+      {contactCard && (
+        <ContactCard
+          email={contactCard.email}
+          name={contactCard.name}
+          onClose={() => setContactCard(null)}
+          onThreadClick={(thread) => {
+            setContactCard(null);
+            openThread(thread);
           }}
         />
       )}

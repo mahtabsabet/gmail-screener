@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session.js';
 import { searchThreads, getThreadsBatch, parseThreadSummary } from '@/lib/gmail.js';
+import { searchContacts, upsertContact } from '@/lib/db.js';
 
 export async function GET(request) {
   const userId = await getSession();
@@ -10,16 +11,30 @@ export async function GET(request) {
   const query = searchParams.get('q');
 
   if (!query || !query.trim()) {
-    return NextResponse.json({ threads: [] });
+    return NextResponse.json({ threads: [], contacts: [] });
   }
 
   try {
-    const threadList = await searchThreads(userId, query.trim());
-    if (threadList.length === 0) return NextResponse.json({ threads: [] });
+    const trimmed = query.trim();
 
-    const rawThreads = await getThreadsBatch(userId, threadList.map(t => t.id));
-    const threads = rawThreads.map(parseThreadSummary).filter(Boolean);
-    return NextResponse.json({ threads });
+    // Search both emails and contacts in parallel
+    const [threadList, contacts] = await Promise.all([
+      searchThreads(userId, trimmed),
+      Promise.resolve(searchContacts(userId, trimmed)),
+    ]);
+
+    let threads = [];
+    if (threadList.length > 0) {
+      const rawThreads = await getThreadsBatch(userId, threadList.map(t => t.id));
+      threads = rawThreads.map(parseThreadSummary).filter(Boolean);
+      for (const t of threads) {
+        if (t.fromEmail && t.fromName && t.fromName !== t.fromEmail.split('@')[0]) {
+          try { upsertContact(userId, t.fromEmail, t.fromName); } catch {}
+        }
+      }
+    }
+
+    return NextResponse.json({ threads, contacts });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

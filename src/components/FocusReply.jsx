@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-export default function FocusReply({ thread, onClose, onReplySent }) {
+export default function FocusReply({ thread, onClose, onReplySent, onSenderClick }) {
   const [replyBody, setReplyBody] = useState('');
   const [sending, setSending] = useState(false);
 
@@ -41,6 +41,12 @@ export default function FocusReply({ thread, onClose, onReplySent }) {
     }
   }
 
+  function handleSenderClick(msg) {
+    if (onSenderClick) {
+      onSenderClick({ email: msg.fromEmail, name: msg.fromName });
+    }
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
@@ -66,9 +72,13 @@ export default function FocusReply({ thread, onClose, onReplySent }) {
           {messages.map((msg) => (
             <div key={msg.id} className="border border-gray-100 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="font-medium text-sm text-gray-900">
+                <button
+                  onClick={() => handleSenderClick(msg)}
+                  className="font-medium text-sm text-gray-900 hover:text-blue-600 hover:underline transition-colors"
+                  title={`View contact: ${msg.fromEmail}`}
+                >
                   {msg.fromName || msg.fromEmail}
-                </span>
+                </button>
                 <span className="text-xs text-gray-400">
                   {msg.date}
                 </span>
