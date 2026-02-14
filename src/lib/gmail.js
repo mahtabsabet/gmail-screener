@@ -5,6 +5,7 @@ const SCOPES = [
   'https://www.googleapis.com/auth/gmail.modify',
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/contacts.readonly',
 ];
 
 export function getOAuth2Client() {
@@ -349,4 +350,95 @@ export async function markThreadRead(userId, threadId) {
     id: threadId,
     requestBody: { removeLabelIds: ['UNREAD'] },
   });
+}
+
+// ---- People API (Google Contacts) ----
+
+function getPeopleClient(userId) {
+  const auth = getAuthedClient(userId);
+  return google.people({ version: 'v1', auth });
+}
+
+/**
+ * Look up a contact by email address using Google People API.
+ * Returns { name, email, photoUrl, phoneNumbers, organizations } or null.
+ */
+export async function lookupContactByEmail(userId, email) {
+  const people = getPeopleClient(userId);
+
+  try {
+    // Search across the user's contacts and directory
+    const res = await people.people.searchContacts({
+      query: email,
+      readMask: 'names,emailAddresses,photos,phoneNumbers,organizations',
+      pageSize: 5,
+    });
+
+    const results = res.data.results || [];
+    // Find the result that matches the email
+    for (const result of results) {
+      const person = result.person;
+      if (!person) continue;
+
+      const emails = (person.emailAddresses || []).map(e => e.value?.toLowerCase());
+      if (!emails.includes(email.toLowerCase())) continue;
+
+      const name = person.names?.[0]?.displayName || '';
+      const photoUrl = person.photos?.[0]?.url || '';
+      const phoneNumbers = (person.phoneNumbers || []).map(p => ({
+        value: p.value,
+        type: p.type || 'other',
+      }));
+      const organizations = (person.organizations || []).map(o => ({
+        name: o.name || '',
+        title: o.title || '',
+      }));
+
+      return { name, email, photoUrl, phoneNumbers, organizations };
+    }
+  } catch (err) {
+    // If contacts.readonly scope not yet granted, fail gracefully
+    if (err.code === 403 || err.code === 401) {
+      console.warn('People API not authorized:', err.message);
+      return null;
+    }
+    console.warn('People API lookup failed:', err.message);
+  }
+
+  return null;
+}
+
+/**
+ * Search Google Contacts by name or email.
+ * Returns array of { name, email, photoUrl }.
+ */
+export async function searchGoogleContacts(userId, query, pageSize = 10) {
+  const people = getPeopleClient(userId);
+
+  try {
+    const res = await people.people.searchContacts({
+      query,
+      readMask: 'names,emailAddresses,photos,organizations',
+      pageSize,
+    });
+
+    const results = res.data.results || [];
+    return results
+      .map(r => r.person)
+      .filter(Boolean)
+      .map(person => ({
+        name: person.names?.[0]?.displayName || '',
+        email: person.emailAddresses?.[0]?.value?.toLowerCase() || '',
+        photoUrl: person.photos?.[0]?.url || '',
+        organization: person.organizations?.[0]?.name || '',
+      }))
+      .filter(c => c.email);
+  } catch (err) {
+    if (err.code === 403 || err.code === 401) {
+      console.warn('People API not authorized:', err.message);
+      return [];
+    }
+    console.warn('People API search failed:', err.message);
+    return [];
+  }
 }

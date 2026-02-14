@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session.js';
-import { searchThreads, getThreadsBatch, parseThreadSummary } from '@/lib/gmail.js';
+import { searchThreads, getThreadsBatch, parseThreadSummary, searchGoogleContacts } from '@/lib/gmail.js';
 import { searchContacts, upsertContact } from '@/lib/db.js';
 
 export async function GET(request) {
@@ -17,10 +17,11 @@ export async function GET(request) {
   try {
     const trimmed = query.trim();
 
-    // Search both emails and contacts in parallel
-    const [threadList, contacts] = await Promise.all([
+    // Search emails, local contacts, and Google Contacts in parallel
+    const [threadList, localContacts, googleContacts] = await Promise.all([
       searchThreads(userId, trimmed),
       Promise.resolve(searchContacts(userId, trimmed)),
+      searchGoogleContacts(userId, trimmed),
     ]);
 
     let threads = [];
@@ -31,6 +32,22 @@ export async function GET(request) {
         if (t.fromEmail && t.fromName && t.fromName !== t.fromEmail.split('@')[0]) {
           try { upsertContact(userId, t.fromEmail, t.fromName); } catch {}
         }
+      }
+    }
+
+    // Merge local + Google contacts, deduplicating by email
+    const seen = new Set(localContacts.map(c => c.email));
+    const contacts = [...localContacts];
+    for (const gc of googleContacts) {
+      if (!seen.has(gc.email)) {
+        seen.add(gc.email);
+        contacts.push({
+          email: gc.email,
+          name: gc.name,
+          status: null,
+          photoUrl: gc.photoUrl,
+          organization: gc.organization,
+        });
       }
     }
 

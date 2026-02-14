@@ -39,6 +39,9 @@ export default function ContactCard({ email, name, onClose, onThreadClick }) {
 
   const displayName = contact?.name || name || email.split('@')[0];
   const initial = (displayName || email)[0].toUpperCase();
+  const photoUrl = contact?.photoUrl;
+  const phoneNumbers = contact?.phoneNumbers || [];
+  const organizations = contact?.organizations || [];
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -51,9 +54,18 @@ export default function ContactCard({ email, name, onClose, onThreadClick }) {
         <div className="px-6 py-5 border-b border-gray-200 bg-gray-50">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xl font-bold flex-shrink-0">
-                {initial}
-              </div>
+              {photoUrl ? (
+                <img
+                  src={photoUrl}
+                  alt={displayName}
+                  className="w-14 h-14 rounded-full flex-shrink-0 object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-14 h-14 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xl font-bold flex-shrink-0">
+                  {initial}
+                </div>
+              )}
               <div className="min-w-0">
                 <h2 className="text-lg font-semibold text-gray-900 truncate">{displayName}</h2>
                 <p className="text-sm text-gray-500 truncate">{email}</p>
@@ -71,6 +83,37 @@ export default function ContactCard({ email, name, onClose, onThreadClick }) {
           </div>
         </div>
 
+        {/* Contact details (from Google People API) */}
+        {(organizations.length > 0 || phoneNumbers.length > 0) && (
+          <div className="px-6 py-4 border-b border-gray-100 space-y-2">
+            {organizations.map((org, i) => (
+              <div key={i} className="flex items-center gap-2 text-sm text-gray-600">
+                <svg className="w-4 h-4 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z" />
+                  <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                  <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2" />
+                  <path d="M10 6h4" />
+                  <path d="M10 10h4" />
+                  <path d="M10 14h4" />
+                  <path d="M10 18h4" />
+                </svg>
+                <span>
+                  {org.title && org.name ? `${org.title} at ${org.name}` : org.name || org.title}
+                </span>
+              </div>
+            ))}
+            {phoneNumbers.map((phone, i) => (
+              <div key={i} className="flex items-center gap-2 text-sm text-gray-600">
+                <svg className="w-4 h-4 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+                </svg>
+                <span>{phone.value}</span>
+                <span className="text-xs text-gray-400">({phone.type})</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Email threads */}
         <div className="flex-1 overflow-auto">
           <div className="px-6 py-3 border-b border-gray-100">
@@ -81,7 +124,7 @@ export default function ContactCard({ email, name, onClose, onThreadClick }) {
 
           {loading ? (
             <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
-              Loading emails...
+              Loading...
             </div>
           ) : threads.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
