@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session.js';
 import { archiveThread, getThreadState } from '@/lib/db.js';
-import { sendReply } from '@/lib/gmail.js';
+import { sendReply, getLabelIdForFolder, modifyThreadLabels } from '@/lib/gmail.js';
 
 export async function POST(request) {
   const userId = await getSession();
@@ -23,9 +23,15 @@ export async function POST(request) {
       references: references || '',
     });
 
-    // Auto-archive: if this thread was in Reply Later, mark it archived
+    // Auto-archive: if this thread was in Reply Later, remove the Gmail label and archive locally
     const state = getThreadState(userId, threadId);
     if (state && state.folder === 'REPLY_LATER') {
+      const labelId = await getLabelIdForFolder(userId, 'REPLY_LATER');
+      if (labelId) {
+        await modifyThreadLabels(userId, threadId, [], [labelId, 'INBOX']).catch(err =>
+          console.warn('Failed to remove Reply Later label:', err.message)
+        );
+      }
       archiveThread(userId, threadId);
     }
 

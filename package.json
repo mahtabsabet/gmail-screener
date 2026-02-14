@@ -7,7 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "jest --verbose"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
@@ -18,6 +19,8 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
+    "jest": "^30.2.0",
+    "jest-environment-jsdom": "^30.2.0",
     "tailwindcss": "^4.0.0"
   }
 }

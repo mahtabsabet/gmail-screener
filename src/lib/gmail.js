@@ -144,6 +144,7 @@ export function parseThreadSummary(thread) {
   if (!lastMsg) return null;
 
   const from = getHeader(lastMsg, 'From');
+  const isUnread = messages.some(m => (m.labelIds || []).includes('UNREAD'));
   return {
     threadId: thread.id,
     subject: getHeader(lastMsg, 'Subject') || '(no subject)',
@@ -153,6 +154,7 @@ export function parseThreadSummary(thread) {
     date: getHeader(lastMsg, 'Date'),
     snippet: thread.snippet || lastMsg.snippet || '',
     messageCount: messages.length,
+    isUnread,
   };
 }
 
@@ -290,4 +292,61 @@ export async function modifyThreadLabels(userId, threadId, addLabelIds = [], rem
       requestBody: { addLabelIds, removeLabelIds },
     });
   }
+}
+
+const GATEKEEPER_LABELS = {
+  REPLY_LATER: 'Gatekeeper/Reply Later',
+  SET_ASIDE: 'Gatekeeper/Set Aside',
+};
+
+// Cache label IDs for the session to avoid repeated lookups
+const labelIdCache = {};
+
+/**
+ * Look up or create a Gmail label by name. Returns the label ID.
+ */
+export async function ensureLabel(userId, labelName) {
+  const cacheKey = `${userId}:${labelName}`;
+  if (labelIdCache[cacheKey]) return labelIdCache[cacheKey];
+
+  const gmail = getGmailClient(userId);
+  const res = await gmail.users.labels.list({ userId: 'me' });
+  const existing = (res.data.labels || []).find(l => l.name === labelName);
+  if (existing) {
+    labelIdCache[cacheKey] = existing.id;
+    return existing.id;
+  }
+
+  const created = await gmail.users.labels.create({
+    userId: 'me',
+    requestBody: {
+      name: labelName,
+      labelListVisibility: 'labelShow',
+      messageListVisibility: 'show',
+    },
+  });
+  labelIdCache[cacheKey] = created.data.id;
+  return created.data.id;
+}
+
+/**
+ * Get the Gmail label ID for a triage folder. Returns null if the folder
+ * doesn't map to a Gmail label.
+ */
+export async function getLabelIdForFolder(userId, folder) {
+  const labelName = GATEKEEPER_LABELS[folder];
+  if (!labelName) return null;
+  return ensureLabel(userId, labelName);
+}
+
+/**
+ * Mark all messages in a thread as read (remove UNREAD label).
+ */
+export async function markThreadRead(userId, threadId) {
+  const gmail = getGmailClient(userId);
+  await gmail.users.threads.modify({
+    userId: 'me',
+    id: threadId,
+    requestBody: { removeLabelIds: ['UNREAD'] },
+  });
 }

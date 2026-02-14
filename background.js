@@ -2,16 +2,29 @@
 'use strict';
 
 const GMAIL_API_BASE = 'https://www.googleapis.com/gmail/v1/users/me';
-const LABEL_SCREENER = 'Screener';
-const LABEL_REPLY_LATER = 'ReplyLater';
-const LABEL_SET_ASIDE = 'SetAside';
+const LABEL_SCREENER = 'Gatekeeper/Screener';
+const LABEL_REPLY_LATER = 'Gatekeeper/Reply Later';
+const LABEL_SET_ASIDE = 'Gatekeeper/Set Aside';
 const LABEL_ALLOWED = 'Allowed';
 const LABEL_DENIED = 'Denied';
 const DEFAULT_SWEEP_CAP = 200;
 const DEFAULT_FILTER_QUERY = '-is:chat';
+const SYNC_ALARM_NAME = 'gatekeeper-cleanup-sync';
+const SYNC_INTERVAL_MINUTES = 5;
 const ensureLabelPromises = {};
 const labelIdCache = {}; // In-memory cache: { labelName: { id, ts } }
 const LABEL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+/** Convert a label name to a Gmail search query token (handles spaces/slashes). */
+function labelQuery(labelName) {
+  if (/[\s/]/.test(labelName)) return `label:"${labelName}"`;
+  return `label:${labelName}`;
+}
+
+/** Convert a label name to a safe Chrome storage key. */
+function safeStorageKey(labelName) {
+  return labelName.replace(/[/\s]/g, '_');
+}
 
 // ============================================================
 // OAuth
@@ -56,7 +69,7 @@ async function forceReauth() {
 // Gmail API helpers
 // ============================================================
 
-async function gmailFetch(path, options = {}) {
+let gmailFetch = async function gmailFetch(path, options = {}) {
   let token;
   try {
     token = await getAuthToken(false);
@@ -120,7 +133,7 @@ async function gmailFetch(path, options = {}) {
 
   if (response.status === 204) return null;
   return response.json();
-}
+};
 
 // ============================================================
 // Settings helpers
@@ -146,7 +159,7 @@ async function saveSettings(partial) {
 // ============================================================
 
 function storageKeyForLabel(labelName) {
-  return `labelId_${labelName}`;
+  return `labelId_${safeStorageKey(labelName)}`;
 }
 
 async function getLabelId(labelName) {
@@ -167,6 +180,9 @@ async function getLabelId(labelName) {
 }
 
 function clearAllLabelCaches() {
+  // Clear in-memory cache
+  for (const key of Object.keys(labelIdCache)) delete labelIdCache[key];
+  // Clear storage cache
   const keys = [LABEL_SCREENER, LABEL_REPLY_LATER, LABEL_SET_ASIDE, LABEL_ALLOWED, LABEL_DENIED].map(storageKeyForLabel);
   return chrome.storage.local.remove(keys);
 }
@@ -400,6 +416,7 @@ async function enableScreenerMode(sweepInbox) {
 
   await createDefaultRoutingFilter();
   await saveSettings({ screenerEnabled: true });
+  startCleanupSync();
 
   let sweepResult = null;
   if (sweepInbox) {
@@ -408,7 +425,7 @@ async function enableScreenerMode(sweepInbox) {
     sweepResult = await sweepMessages(
       query,
       [screenerLabelId],
-      [],
+      ['INBOX'],
       settings.sweepCap || DEFAULT_SWEEP_CAP
     );
   }
@@ -419,14 +436,15 @@ async function enableScreenerMode(sweepInbox) {
 async function disableScreenerMode(restoreToInbox) {
   await removeDefaultRoutingFilter();
   await saveSettings({ screenerEnabled: false });
+  stopCleanupSync();
 
   let sweepResult = null;
   if (restoreToInbox) {
     const screenerLabelId = await ensureLabel(LABEL_SCREENER);
     const settings = await getSettings();
     sweepResult = await sweepMessages(
-      `label:${LABEL_SCREENER}`,
-      [],
+      labelQuery(LABEL_SCREENER),
+      ['INBOX'],
       [screenerLabelId],
       settings.sweepCap || DEFAULT_SWEEP_CAP
     );
@@ -449,10 +467,10 @@ async function handleAllow(target) {
   const allowFilters = await getAllAllowFilters(allowedLabelId, filters);
   const filterId = await createAllowFilter(target, allowFilters, allowedLabelId);
 
-  // Sweep: add Allowed label, remove Screener label
+  // Sweep: add Allowed + INBOX labels, remove Screener label
   const sweep = await sweepMessages(
-    `from:${target} label:${LABEL_SCREENER}`,
-    [allowedLabelId],
+    `from:${target} ${labelQuery(LABEL_SCREENER)}`,
+    [allowedLabelId, 'INBOX'],
     [screenerLabelId],
     500
   );
@@ -471,8 +489,8 @@ async function handleUndoAllow(target, movedIds) {
   if (existing) await deleteFilter(existing.id);
 
   if (movedIds && movedIds.length > 0) {
-    // Restore Screener label and remove Allowed label
-    await modifyMessages(movedIds, [screenerLabelId], [allowedLabelId]);
+    // Restore Screener label, remove Allowed + INBOX labels
+    await modifyMessages(movedIds, [screenerLabelId], [allowedLabelId, 'INBOX']);
   }
 
   return { success: true };
@@ -484,12 +502,12 @@ async function handleRemoveAllowed(target) {
   const existing = await findFilterByFrom(allowFilters, target);
   if (existing) await deleteFilter(existing.id);
 
-  // Remove the Allowed label from existing messages, restore Screener
+  // Remove the Allowed label from existing messages, restore Screener + remove INBOX
   const screenerLabelId = await ensureLabel(LABEL_SCREENER);
   await sweepMessages(
-    `from:${target} label:${LABEL_ALLOWED}`,
+    `from:${target} ${labelQuery(LABEL_ALLOWED)}`,
     [screenerLabelId],
-    [allowedLabelId],
+    [allowedLabelId, 'INBOX'],
     500
   );
 
@@ -510,6 +528,155 @@ async function getScreenerCount() {
     return { total: 0, unread: 0, threads: 0 };
   }
 }
+
+// ============================================================
+// Cleanup Sync (History-based poller)
+// ============================================================
+
+/**
+ * Initialize the cleanup sync alarm. Called on extension startup and
+ * after enabling screener mode.
+ */
+function startCleanupSync() {
+  chrome.alarms.create(SYNC_ALARM_NAME, { periodInMinutes: SYNC_INTERVAL_MINUTES });
+  console.log(`[Gatekeeper] Cleanup sync alarm set (every ${SYNC_INTERVAL_MINUTES} min)`);
+}
+
+function stopCleanupSync() {
+  chrome.alarms.clear(SYNC_ALARM_NAME);
+}
+
+/** Get or initialize the historyId used for incremental sync. */
+async function getLastHistoryId() {
+  const { lastHistoryId } = await chrome.storage.local.get('lastHistoryId');
+  return lastHistoryId || null;
+}
+
+async function saveLastHistoryId(historyId) {
+  await chrome.storage.local.set({ lastHistoryId: historyId });
+}
+
+/**
+ * Fetch the user's current profile to get the latest historyId.
+ * Used to seed the initial historyId if we don't have one.
+ */
+async function fetchCurrentHistoryId() {
+  const profile = await gmailFetch('/profile');
+  return profile.historyId;
+}
+
+/**
+ * The cleanup sync function. Uses Gmail History API to detect:
+ * 1. Reply Later threads where the user removed the label in Gmail → no action needed
+ *    (Gmail is already the source of truth for labels)
+ * 2. Reply Later threads where the user sent a reply → remove the Reply Later label
+ */
+async function runCleanupSync() {
+  const settings = await getSettings();
+  if (!settings.screenerEnabled) return;
+
+  try {
+    let startHistoryId = await getLastHistoryId();
+
+    // If no historyId stored, seed it from the profile and skip this cycle
+    if (!startHistoryId) {
+      const currentId = await fetchCurrentHistoryId();
+      await saveLastHistoryId(currentId);
+      console.log('[Gatekeeper] Seeded historyId:', currentId);
+      return;
+    }
+
+    const replyLaterLabelId = await getLabelId(LABEL_REPLY_LATER);
+    if (!replyLaterLabelId) return; // Label doesn't exist yet
+
+    // Fetch history since last sync
+    let history = [];
+    let pageToken = null;
+    let latestHistoryId = startHistoryId;
+
+    do {
+      const params = new URLSearchParams({
+        startHistoryId,
+        historyTypes: 'labelRemoved,messageAdded',
+        labelId: replyLaterLabelId,
+        maxResults: '100',
+      });
+      if (pageToken) params.set('pageToken', pageToken);
+
+      let resp;
+      try {
+        resp = await gmailFetch(`/history?${params}`);
+      } catch (err) {
+        // historyId too old (404) → reseed and return
+        if (err.message?.includes('404')) {
+          const currentId = await fetchCurrentHistoryId();
+          await saveLastHistoryId(currentId);
+          console.log('[Gatekeeper] History expired, reseeded historyId:', currentId);
+          return;
+        }
+        throw err;
+      }
+
+      if (resp.history) history = history.concat(resp.history);
+      if (resp.historyId) latestHistoryId = resp.historyId;
+      pageToken = resp.nextPageToken || null;
+    } while (pageToken);
+
+    // Save the latest historyId for next cycle
+    await saveLastHistoryId(latestHistoryId);
+
+    if (history.length === 0) return;
+
+    // Check Reply Later threads for sent replies.
+    // Collect thread IDs from messagesAdded events. The History API's labelId
+    // filter already ensures these are threads with the Reply Later label, so
+    // we don't need to re-check labelIds on individual messages (a sent reply
+    // in a Reply Later thread won't itself carry the Reply Later label).
+    const replyLaterThreadIds = new Set();
+    for (const h of history) {
+      for (const added of (h.messagesAdded || [])) {
+        const msg = added.message;
+        if (msg && msg.threadId) {
+          replyLaterThreadIds.add(msg.threadId);
+        }
+      }
+    }
+
+    // For each affected thread, check if a SENT message exists
+    for (const threadId of replyLaterThreadIds) {
+      try {
+        const thread = await gmailFetch(`/threads/${threadId}?format=minimal`);
+        const hasSent = (thread.messages || []).some(
+          (m) => (m.labelIds || []).includes('SENT')
+        );
+        if (hasSent) {
+          // User replied: remove Reply Later label
+          const messageIds = (thread.messages || []).map((m) => m.id);
+          await modifyMessages(messageIds, [], [replyLaterLabelId]);
+          console.log(`[Gatekeeper] Auto-archived replied thread: ${threadId}`);
+        }
+      } catch (err) {
+        console.warn(`[Gatekeeper] Sync error for thread ${threadId}:`, err.message);
+      }
+    }
+
+    console.log(`[Gatekeeper] Cleanup sync complete. Processed ${history.length} history records.`);
+  } catch (err) {
+    console.warn('[Gatekeeper] Cleanup sync failed:', err.message);
+  }
+}
+
+// Listen for alarms
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === SYNC_ALARM_NAME) {
+    runCleanupSync();
+  }
+});
+
+// Start sync on service worker startup if screener is enabled
+getSettings().then((settings) => {
+  if (settings.screenerEnabled) startCleanupSync();
+});
 
 // ============================================================
 // Continue sweep (for when sweep hits cap)
@@ -583,7 +750,15 @@ async function handleMessage(msg) {
         (thread) => (thread.messages || []).map((m) => m.id)
       );
       if (allMessageIds.length > 0) {
-        await modifyMessages(allMessageIds, [labelId], ['INBOX']);
+        try {
+          await modifyMessages(allMessageIds, [labelId], ['INBOX']);
+        } catch (err) {
+          // Rollback: restore INBOX, remove the label we just added
+          try {
+            await modifyMessages(allMessageIds, ['INBOX'], [labelId]);
+          } catch (_) { /* best-effort rollback */ }
+          throw err;
+        }
       }
       return { success: true, movedIds: allMessageIds };
     }
@@ -664,6 +839,28 @@ async function handleMessage(msg) {
       };
     }
 
+    // --- Send Reply: archive from Reply Later (spec: remove Reply Later + INBOX) ---
+    case 'SEND_REPLY': {
+      const threadIds = msg.threadIds || [];
+      if (threadIds.length === 0) return { success: false, error: 'No threads specified' };
+      const replyLaterLabelId = await ensureLabel(LABEL_REPLY_LATER);
+      const threadResults = await Promise.all(
+        threadIds.map((id) => gmailFetch(`/threads/${id}?format=minimal`))
+      );
+      const allMessageIds = threadResults.flatMap(
+        (thread) => (thread.messages || []).map((m) => m.id)
+      );
+      if (allMessageIds.length > 0) {
+        await modifyMessages(allMessageIds, [], [replyLaterLabelId, 'INBOX']);
+      }
+      return { success: true, archivedIds: allMessageIds };
+    }
+
+    // --- Trigger cleanup sync ---
+    case 'SYNC_NOW':
+      await runCleanupSync();
+      return { success: true };
+
     // --- Continue sweep ---
     case 'CONTINUE_SWEEP':
       return continueSweep(msg.query, msg.addLabelIds, msg.removeLabelIds);
@@ -690,4 +887,37 @@ async function handleMessage(msg) {
     default:
       return { error: `Unknown message type: ${msg.type}` };
   }
+}
+
+// ============================================================
+// Test exports (Node.js / Jest only — ignored in Chrome)
+// ============================================================
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    // Constants
+    LABEL_SCREENER,
+    LABEL_REPLY_LATER,
+    LABEL_SET_ASIDE,
+    LABEL_ALLOWED,
+    // Helpers
+    labelQuery,
+    safeStorageKey,
+    storageKeyForLabel,
+    // Core functions
+    handleMessage,
+    ensureLabel,
+    ensureAllLabels,
+    getLabelId,
+    clearAllLabelCaches,
+    modifyMessages,
+    sweepMessages,
+    runCleanupSync,
+    startCleanupSync,
+    stopCleanupSync,
+    getLastHistoryId,
+    saveLastHistoryId,
+    // Internals for replacing in tests
+    _replaceGmailFetch: (fn) => { gmailFetch = fn; },
+    _getGmailFetch: () => gmailFetch,
+  };
 }

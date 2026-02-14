@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session.js';
 import { getSenderStatus, getAllApprovedEmails, getAllDeniedEmails, getThreadsByFolder } from '@/lib/db.js';
-import { listInboxThreads, listSentThreads, getThread, getThreadsBatch, getThreadFull, parseThreadSummary, parseFullThread } from '@/lib/gmail.js';
+import { listInboxThreads, listSentThreads, getThread, getThreadsBatch, getThreadFull, parseThreadSummary, parseFullThread, markThreadRead } from '@/lib/gmail.js';
 
 export async function GET(request) {
   const userId = await getSession();
@@ -16,6 +16,12 @@ export async function GET(request) {
     try {
       const thread = await getThreadFull(userId, threadId);
       const messages = parseFullThread(thread);
+
+      // Mark as read in Gmail (fire-and-forget)
+      markThreadRead(userId, threadId).catch(err =>
+        console.warn('Failed to mark thread read:', err.message)
+      );
+
       return NextResponse.json({ thread: { threadId: thread.id, messages } });
     } catch (err) {
       return NextResponse.json({ error: err.message }, { status: 500 });
