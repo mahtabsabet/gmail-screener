@@ -6,6 +6,7 @@ const LABEL_SCREENER = 'Screener';
 const LABEL_REPLY_LATER = 'ReplyLater';
 const LABEL_SET_ASIDE = 'SetAside';
 const LABEL_ALLOWED = 'Allowed';
+const LABEL_DENIED = 'Denied';
 const DEFAULT_SWEEP_CAP = 200;
 const DEFAULT_FILTER_QUERY = '-is:chat';
 const ensureLabelPromises = {};
@@ -166,7 +167,7 @@ async function getLabelId(labelName) {
 }
 
 function clearAllLabelCaches() {
-  const keys = [LABEL_SCREENER, LABEL_REPLY_LATER, LABEL_SET_ASIDE, LABEL_ALLOWED].map(storageKeyForLabel);
+  const keys = [LABEL_SCREENER, LABEL_REPLY_LATER, LABEL_SET_ASIDE, LABEL_ALLOWED, LABEL_DENIED].map(storageKeyForLabel);
   return chrome.storage.local.remove(keys);
 }
 
@@ -226,13 +227,14 @@ async function _ensureLabel(labelName) {
 }
 
 async function ensureAllLabels() {
-  const [screenerLabelId, setAsideLabelId, replyLaterLabelId, allowedLabelId] = await Promise.all([
+  const [screenerLabelId, setAsideLabelId, replyLaterLabelId, allowedLabelId, deniedLabelId] = await Promise.all([
     ensureLabel(LABEL_SCREENER),
     ensureLabel(LABEL_SET_ASIDE),
     ensureLabel(LABEL_REPLY_LATER),
     ensureLabel(LABEL_ALLOWED),
+    ensureLabel(LABEL_DENIED),
   ]);
-  return { screenerLabelId, setAsideLabelId, replyLaterLabelId, allowedLabelId };
+  return { screenerLabelId, setAsideLabelId, replyLaterLabelId, allowedLabelId, deniedLabelId };
 }
 
 // ============================================================
