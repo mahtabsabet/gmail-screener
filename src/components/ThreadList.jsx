@@ -14,7 +14,7 @@ function formatDate(dateStr) {
   }
 }
 
-export default function ThreadList({ threads, actions, onThreadClick, emptyMessage }) {
+export default function ThreadList({ threads, actions, onThreadClick, emptyMessage, selectedThreadId }) {
   if (threads.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
@@ -25,10 +25,12 @@ export default function ThreadList({ threads, actions, onThreadClick, emptyMessa
 
   return (
     <div className="divide-y divide-gray-100">
-      {threads.map((thread) => (
+      {threads.map((thread) => {
+        const isSelected = selectedThreadId === thread.threadId;
+        return (
         <div
           key={thread.threadId}
-          className={`flex items-center gap-4 px-6 py-3 hover:bg-gray-50 transition-colors group ${thread.isUnread ? 'bg-white' : 'bg-gray-50/40'}`}
+          className={`flex items-center gap-4 px-6 py-3 hover:bg-gray-50 transition-colors group cursor-pointer ${isSelected ? 'bg-blue-50 border-l-2 border-blue-600' : thread.isUnread ? 'bg-white border-l-2 border-transparent' : 'bg-gray-50/40 border-l-2 border-transparent'}`}
         >
           {/* Unread indicator */}
           <div className="w-2 flex-shrink-0">
@@ -70,7 +72,8 @@ export default function ThreadList({ threads, actions, onThreadClick, emptyMessa
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

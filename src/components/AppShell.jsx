@@ -17,7 +17,7 @@ export default function AppShell({ children, email }) {
   const pathname = usePathname();
 
   return (
-    <div className="min-h-screen flex">
+    <div className="h-screen flex overflow-hidden">
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
         <div className="p-5 border-b border-gray-200">
