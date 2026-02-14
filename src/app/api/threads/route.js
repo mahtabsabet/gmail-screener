@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session.js';
 import { getSenderStatus, getAllApprovedEmails, getAllDeniedEmails, getThreadsByFolder } from '@/lib/db.js';
-import { listInboxThreads, getThread, getThreadFull, parseThreadSummary, parseFullThread } from '@/lib/gmail.js';
+import { listInboxThreads, listSentThreads, getThread, getThreadFull, parseThreadSummary, parseFullThread } from '@/lib/gmail.js';
 
 export async function GET(request) {
   const userId = await getSession();
@@ -39,6 +39,28 @@ export async function GET(request) {
       }
     }
     return NextResponse.json({ threads });
+  }
+
+  // Sent mail — fetch sent threads, no sender filtering
+  if (view === 'sent') {
+    try {
+      const threadList = await listSentThreads(userId);
+      if (threadList.length === 0) return NextResponse.json({ threads: [] });
+
+      const threads = [];
+      for (const t of threadList) {
+        try {
+          const thread = await getThread(userId, t.id);
+          const summary = parseThreadSummary(thread);
+          if (summary) threads.push(summary);
+        } catch (err) {
+          console.warn(`Skipping thread ${t.id}:`, err.message);
+        }
+      }
+      return NextResponse.json({ threads });
+    } catch (err) {
+      return NextResponse.json({ error: err.message }, { status: 500 });
+    }
   }
 
   // Screener or Imbox — fetch inbox threads and filter by sender status

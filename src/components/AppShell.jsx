@@ -7,8 +7,10 @@ const NAV_ITEMS = [
   { href: '/imbox', label: 'Imbox', icon: InboxIcon },
   { href: '/screener', label: 'Screener', icon: FilterIcon },
   { href: '/screened-out', label: 'Screened Out', icon: ShieldOffIcon },
+  { href: '/sent', label: 'Sent', icon: SendIcon },
   { href: '/reply-later', label: 'Reply Later', icon: ClockIcon },
   { href: '/set-aside', label: 'Set Aside', icon: BookmarkIcon },
+  { href: '/search', label: 'Search', icon: SearchIcon },
 ];
 
 export default function AppShell({ children, email }) {
@@ -102,6 +104,24 @@ function ShieldOffIcon({ className }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
       <line x1="4" y1="4" x2="20" y2="20" />
+    </svg>
+  );
+}
+
+function SendIcon({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="22" y1="2" x2="11" y2="13" />
+      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </svg>
+  );
+}
+
+function SearchIcon({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
   );
 }

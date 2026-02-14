@@ -230,6 +230,26 @@ export async function sendReply(userId, { threadId, to, subject, body, messageId
   return res.data;
 }
 
+export async function searchThreads(userId, query, maxResults = 50) {
+  const gmail = getGmailClient(userId);
+  const res = await gmail.users.threads.list({
+    userId: 'me',
+    q: query,
+    maxResults,
+  });
+  return res.data.threads || [];
+}
+
+export async function listSentThreads(userId, maxResults = 50) {
+  const gmail = getGmailClient(userId);
+  const res = await gmail.users.threads.list({
+    userId: 'me',
+    q: 'label:SENT',
+    maxResults,
+  });
+  return res.data.threads || [];
+}
+
 export async function modifyThreadLabels(userId, threadId, addLabelIds = [], removeLabelIds = []) {
   const gmail = getGmailClient(userId);
   const thread = await gmail.users.threads.get({
