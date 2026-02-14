@@ -68,7 +68,7 @@ async function forceReauth() {
 // Gmail API helpers
 // ============================================================
 
-async function gmailFetch(path, options = {}) {
+let gmailFetch = async function gmailFetch(path, options = {}) {
   let token;
   try {
     token = await getAuthToken(false);
@@ -132,7 +132,7 @@ async function gmailFetch(path, options = {}) {
 
   if (response.status === 204) return null;
   return response.json();
-}
+};
 
 // ============================================================
 // Settings helpers
@@ -179,6 +179,9 @@ async function getLabelId(labelName) {
 }
 
 function clearAllLabelCaches() {
+  // Clear in-memory cache
+  for (const key of Object.keys(labelIdCache)) delete labelIdCache[key];
+  // Clear storage cache
   const keys = [LABEL_SCREENER, LABEL_REPLY_LATER, LABEL_SET_ASIDE, LABEL_ALLOWED].map(storageKeyForLabel);
   return chrome.storage.local.remove(keys);
 }
@@ -622,14 +625,16 @@ async function runCleanupSync() {
 
     if (history.length === 0) return;
 
-    // Check Reply Later threads for sent replies
-    // Collect thread IDs that had Reply Later label activity
+    // Check Reply Later threads for sent replies.
+    // Collect thread IDs from messagesAdded events. The History API's labelId
+    // filter already ensures these are threads with the Reply Later label, so
+    // we don't need to re-check labelIds on individual messages (a sent reply
+    // in a Reply Later thread won't itself carry the Reply Later label).
     const replyLaterThreadIds = new Set();
     for (const h of history) {
-      // messagesAdded: new messages in threads with the Reply Later label
       for (const added of (h.messagesAdded || [])) {
         const msg = added.message;
-        if (msg && (msg.labelIds || []).includes(replyLaterLabelId)) {
+        if (msg && msg.threadId) {
           replyLaterThreadIds.add(msg.threadId);
         }
       }
@@ -880,4 +885,37 @@ async function handleMessage(msg) {
     default:
       return { error: `Unknown message type: ${msg.type}` };
   }
+}
+
+// ============================================================
+// Test exports (Node.js / Jest only — ignored in Chrome)
+// ============================================================
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    // Constants
+    LABEL_SCREENER,
+    LABEL_REPLY_LATER,
+    LABEL_SET_ASIDE,
+    LABEL_ALLOWED,
+    // Helpers
+    labelQuery,
+    safeStorageKey,
+    storageKeyForLabel,
+    // Core functions
+    handleMessage,
+    ensureLabel,
+    ensureAllLabels,
+    getLabelId,
+    clearAllLabelCaches,
+    modifyMessages,
+    sweepMessages,
+    runCleanupSync,
+    startCleanupSync,
+    stopCleanupSync,
+    getLastHistoryId,
+    saveLastHistoryId,
+    // Internals for replacing in tests
+    _replaceGmailFetch: (fn) => { gmailFetch = fn; },
+    _getGmailFetch: () => gmailFetch,
+  };
 }

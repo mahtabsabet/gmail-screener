@@ -1220,6 +1220,21 @@
     }, 5000);
   }
 
+  // Test exports (Node.js / Jest only — ignored in Chrome)
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+      getCurrentView,
+      extractSenderEmail,
+      extractThreadId,
+      decimalToHex,
+      normalizeThreadId,
+      getDomain,
+      formatFrom,
+      formatDate,
+    };
+    return; // Don't run init() in test environment
+  }
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
