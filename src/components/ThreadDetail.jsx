@@ -29,7 +29,7 @@ function formatShortDate(dateStr) {
   }
 }
 
-export default function ThreadDetail({ thread, onClose, actions, onReplySent }) {
+export default function ThreadDetail({ thread, onClose, actions, onReplySent, onSenderClick }) {
   const [replyBody, setReplyBody] = useState('');
   const [sending, setSending] = useState(false);
   const [showReply, setShowReply] = useState(false);
@@ -78,11 +78,20 @@ export default function ThreadDetail({ thread, onClose, actions, onReplySent }) 
       <div className="px-8 pt-6 pb-4 border-b border-gray-200 flex-shrink-0">
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-semibold flex-shrink-0">
+            <button
+              onClick={() => onSenderClick?.({ email: senderEmail, name: senderName })}
+              className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-semibold flex-shrink-0 hover:ring-2 hover:ring-blue-300 transition-all"
+              title={`View contact: ${senderName}`}
+            >
               {senderName[0].toUpperCase()}
-            </div>
+            </button>
             <div>
-              <div className="font-semibold text-gray-900">{senderName}</div>
+              <button
+                onClick={() => onSenderClick?.({ email: senderEmail, name: senderName })}
+                className="font-semibold text-gray-900 hover:text-blue-600 hover:underline"
+              >
+                {senderName}
+              </button>
               <div className="text-xs text-gray-500">{senderEmail}</div>
             </div>
           </div>
@@ -123,7 +132,7 @@ export default function ThreadDetail({ thread, onClose, actions, onReplySent }) 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
         {messages.map((msg, i) => (
-          <MessageItem key={msg.id || i} msg={msg} defaultExpanded={i === messages.length - 1} />
+          <MessageItem key={msg.id || i} msg={msg} defaultExpanded={i === messages.length - 1} onSenderClick={onSenderClick} />
         ))}
       </div>
 
@@ -162,9 +171,10 @@ export default function ThreadDetail({ thread, onClose, actions, onReplySent }) 
   );
 }
 
-function MessageItem({ msg, defaultExpanded }) {
+function MessageItem({ msg, defaultExpanded, onSenderClick }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const senderName = msg.fromName || msg.fromEmail || 'Unknown';
+  const senderEmail = msg.fromEmail || '';
 
   return (
     <div className="border-b border-gray-100 last:border-b-0">
@@ -174,10 +184,18 @@ function MessageItem({ msg, defaultExpanded }) {
         className="w-full flex items-center justify-between px-8 py-3 hover:bg-gray-50 transition-colors text-left"
       >
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs font-semibold flex-shrink-0">
+          <div
+            onClick={(e) => { e.stopPropagation(); onSenderClick?.({ email: senderEmail, name: senderName }); }}
+            className="w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs font-semibold flex-shrink-0 hover:ring-2 hover:ring-blue-300 transition-all cursor-pointer"
+          >
             {senderName[0].toUpperCase()}
           </div>
-          <span className="text-sm font-medium text-gray-900 truncate">{senderName}</span>
+          <span
+            className="text-sm font-medium text-gray-900 truncate hover:text-blue-600 hover:underline"
+            onClick={(e) => { e.stopPropagation(); onSenderClick?.({ email: senderEmail, name: senderName }); }}
+          >
+            {senderName}
+          </span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="text-xs text-gray-400">{formatShortDate(msg.date)}</span>

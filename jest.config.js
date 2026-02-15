@@ -1,6 +1,29 @@
-module.exports = {
-  testEnvironment: 'node',
-  // Note: chrome mock is installed per-file via require('./setup'), not globally,
-  // because content.test.js uses jsdom environment while others use node.
-  testMatch: ['**/test/**/*.test.js'],
+const nextJest = require('next/jest');
+
+const createJestConfig = nextJest({ dir: './' });
+
+module.exports = async () => {
+  const nextConfig = await createJestConfig({
+    testEnvironment: 'node',
+    testMatch: ['**/src/**/*.test.js'],
+    moduleNameMapper: {
+      '^@/(.*)$': '<rootDir>/src/$1',
+    },
+  })();
+
+  return {
+    projects: [
+      // Existing Chrome extension tests (no transform needed)
+      {
+        displayName: 'extension',
+        testEnvironment: 'node',
+        testMatch: ['**/test/**/*.test.js'],
+      },
+      // Next.js app tests (SWC transform for ESM imports)
+      {
+        ...nextConfig,
+        displayName: 'app',
+      },
+    ],
+  };
 };

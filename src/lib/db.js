@@ -38,6 +38,15 @@ function getDb() {
       updated_at INTEGER DEFAULT (unixepoch()),
       UNIQUE(user_id, thread_id)
     );
+
+    CREATE TABLE IF NOT EXISTS contacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      email TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER DEFAULT (unixepoch()),
+      UNIQUE(user_id, email)
+    );
   `);
 
   return _db;
@@ -146,4 +155,34 @@ export function removeThreadState(userId, threadId) {
   getDb().prepare(
     'DELETE FROM thread_state WHERE user_id = ? AND thread_id = ?'
   ).run(userId, threadId);
+}
+
+// ---- Contacts ----
+
+export function upsertContact(userId, email, name) {
+  getDb().prepare(`
+    INSERT INTO contacts (user_id, email, name, updated_at)
+    VALUES (?, ?, ?, unixepoch())
+    ON CONFLICT(user_id, email) DO UPDATE SET
+      name = CASE WHEN excluded.name != '' THEN excluded.name ELSE contacts.name END,
+      updated_at = unixepoch()
+  `).run(userId, email.toLowerCase(), name);
+}
+
+export function getContact(userId, email) {
+  return getDb().prepare(
+    'SELECT email, name, updated_at FROM contacts WHERE user_id = ? AND email = ?'
+  ).get(userId, email.toLowerCase()) || null;
+}
+
+export function searchContacts(userId, query) {
+  const pattern = `%${query.toLowerCase()}%`;
+  return getDb().prepare(`
+    SELECT c.email, c.name, a.status
+    FROM contacts c
+    LEFT JOIN approved_senders a ON c.user_id = a.user_id AND c.email = a.email
+    WHERE c.user_id = ? AND (LOWER(c.name) LIKE ? OR c.email LIKE ?)
+    ORDER BY c.updated_at DESC
+    LIMIT 20
+  `).all(userId, pattern, pattern);
 }

@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import ThreadList, { ActionButton } from '@/components/ThreadList';
 import ThreadDetail from '@/components/ThreadDetail';
+import ContactCard from '@/components/ContactCard';
 
 export default function ReplyLaterPage() {
   const [threads, setThreads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedThread, setSelectedThread] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [contactCard, setContactCard] = useState(null);
 
   const fetchThreads = useCallback(async () => {
     setLoading(true);
@@ -70,6 +72,7 @@ export default function ReplyLaterPage() {
               threads={threads}
               selectedThreadId={selectedThread?.threadId}
               onThreadClick={openThread}
+              onSenderClick={setContactCard}
               emptyMessage="No emails to reply to. Move emails here from the Imbox."
               actions={(thread) => (
                 <ActionButton
@@ -97,6 +100,7 @@ export default function ReplyLaterPage() {
             <ThreadDetail
               thread={selectedThread}
               onClose={() => setSelectedThread(null)}
+              onSenderClick={setContactCard}
               onReplySent={handleReplySent}
               actions={
                 <button
@@ -123,6 +127,18 @@ export default function ReplyLaterPage() {
             <p className="text-sm">Select an email to read and reply</p>
           </div>
         </div>
+      )}
+
+      {contactCard && (
+        <ContactCard
+          email={contactCard.email}
+          name={contactCard.name}
+          onClose={() => setContactCard(null)}
+          onThreadClick={(thread) => {
+            setContactCard(null);
+            openThread(thread);
+          }}
+        />
       )}
     </div>
   );

@@ -3,11 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import ThreadList, { ActionButton } from '@/components/ThreadList';
 import FocusReply from '@/components/FocusReply';
+import ContactCard from '@/components/ContactCard';
 
 export default function ScreenedOutPage() {
   const [threads, setThreads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [focusThread, setFocusThread] = useState(null);
+  const [contactCard, setContactCard] = useState(null);
 
   const fetchThreads = useCallback(async () => {
     setLoading(true);
@@ -56,6 +58,7 @@ export default function ScreenedOutPage() {
         <ThreadList
           threads={threads}
           onThreadClick={openThread}
+          onSenderClick={setContactCard}
           emptyMessage="No screened out emails in your inbox."
           actions={(thread) => (
             <ActionButton
@@ -75,9 +78,22 @@ export default function ScreenedOutPage() {
         <FocusReply
           thread={focusThread}
           onClose={() => setFocusThread(null)}
+          onSenderClick={setContactCard}
           onReplySent={() => {
             setFocusThread(null);
             fetchThreads();
+          }}
+        />
+      )}
+
+      {contactCard && (
+        <ContactCard
+          email={contactCard.email}
+          name={contactCard.name}
+          onClose={() => setContactCard(null)}
+          onThreadClick={(thread) => {
+            setContactCard(null);
+            openThread(thread);
           }}
         />
       )}

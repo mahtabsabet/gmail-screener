@@ -14,7 +14,7 @@ function formatDate(dateStr) {
   }
 }
 
-export default function ThreadList({ threads, actions, onThreadClick, emptyMessage, selectedThreadId }) {
+export default function ThreadList({ threads, actions, onThreadClick, onSenderClick, emptyMessage, selectedThreadId }) {
   if (threads.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
@@ -39,10 +39,17 @@ export default function ThreadList({ threads, actions, onThreadClick, emptyMessa
             )}
           </div>
 
-          {/* Sender avatar */}
-          <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-semibold flex-shrink-0">
+          {/* Sender avatar — clickable for contact card */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSenderClick?.({ email: thread.fromEmail, name: thread.fromName });
+            }}
+            className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-semibold flex-shrink-0 hover:ring-2 hover:ring-blue-300 transition-all"
+            title={`View contact: ${thread.fromName || thread.fromEmail}`}
+          >
             {(thread.fromName || thread.fromEmail || '?')[0].toUpperCase()}
-          </div>
+          </button>
 
           {/* Thread info — clickable */}
           <button
@@ -50,7 +57,16 @@ export default function ThreadList({ threads, actions, onThreadClick, emptyMessa
             className="flex-1 min-w-0 text-left"
           >
             <div className="flex items-center gap-2">
-              <span className={`text-sm truncate ${thread.isUnread ? 'font-semibold text-gray-900' : 'font-medium text-gray-600'}`}>
+              <span
+                className={`text-sm truncate ${thread.isUnread ? 'font-semibold text-gray-900' : 'font-medium text-gray-600'} ${onSenderClick ? 'hover:text-blue-600 hover:underline' : ''}`}
+                onClick={(e) => {
+                  if (onSenderClick) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onSenderClick({ email: thread.fromEmail, name: thread.fromName });
+                  }
+                }}
+              >
                 {thread.fromName || thread.fromEmail}
               </span>
               <span className="text-xs text-gray-400 flex-shrink-0">

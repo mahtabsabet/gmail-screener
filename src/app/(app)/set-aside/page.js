@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import ThreadList, { ActionButton } from '@/components/ThreadList';
 import ThreadDetail from '@/components/ThreadDetail';
+import ContactCard from '@/components/ContactCard';
 
 export default function SetAsidePage() {
   const [threads, setThreads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedThread, setSelectedThread] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [contactCard, setContactCard] = useState(null);
 
   const fetchThreads = useCallback(async () => {
     setLoading(true);
@@ -65,6 +67,7 @@ export default function SetAsidePage() {
               threads={threads}
               selectedThreadId={selectedThread?.threadId}
               onThreadClick={openThread}
+              onSenderClick={setContactCard}
               emptyMessage="Nothing set aside. Move emails here from the Imbox."
               actions={(thread) => (
                 <ActionButton
@@ -92,6 +95,7 @@ export default function SetAsidePage() {
             <ThreadDetail
               thread={selectedThread}
               onClose={() => setSelectedThread(null)}
+              onSenderClick={setContactCard}
               onReplySent={() => {
                 setSelectedThread(null);
                 fetchThreads();
@@ -120,6 +124,18 @@ export default function SetAsidePage() {
             <p className="text-sm">Select an email to read</p>
           </div>
         </div>
+      )}
+
+      {contactCard && (
+        <ContactCard
+          email={contactCard.email}
+          name={contactCard.name}
+          onClose={() => setContactCard(null)}
+          onThreadClick={(thread) => {
+            setContactCard(null);
+            openThread(thread);
+          }}
+        />
       )}
     </div>
   );

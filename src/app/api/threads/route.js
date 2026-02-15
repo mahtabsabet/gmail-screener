@@ -1,7 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session.js';
-import { getSenderStatus, getAllApprovedEmails, getAllDeniedEmails, getThreadsByFolder } from '@/lib/db.js';
+import { getSenderStatus, getAllApprovedEmails, getAllDeniedEmails, getThreadsByFolder, upsertContact } from '@/lib/db.js';
 import { listInboxThreads, listSentThreads, getThread, getThreadsBatch, getThreadFull, parseThreadSummary, parseFullThread, markThreadRead } from '@/lib/gmail.js';
+
+function saveContactsFromThreads(userId, threads) {
+  for (const t of threads) {
+    if (t.fromEmail && t.fromName && t.fromName !== t.fromEmail.split('@')[0]) {
+      try { upsertContact(userId, t.fromEmail, t.fromName); } catch {}
+    }
+  }
+}
 
 export async function GET(request) {
   const userId = await getSession();
@@ -36,6 +44,7 @@ export async function GET(request) {
 
     const rawThreads = await getThreadsBatch(userId, rows.map(r => r.thread_id));
     const threads = rawThreads.map(parseThreadSummary).filter(Boolean);
+    saveContactsFromThreads(userId, threads);
     return NextResponse.json({ threads });
   }
 
@@ -47,6 +56,7 @@ export async function GET(request) {
 
       const rawThreads = await getThreadsBatch(userId, threadList.map(t => t.id));
       const threads = rawThreads.map(parseThreadSummary).filter(Boolean);
+      saveContactsFromThreads(userId, threads);
       return NextResponse.json({ threads });
     } catch (err) {
       return NextResponse.json({ error: err.message }, { status: 500 });
@@ -62,11 +72,10 @@ export async function GET(request) {
     const denied = new Set(getAllDeniedEmails(userId));
 
     const rawThreads = await getThreadsBatch(userId, threadList.map(t => t.id));
+    const allSummaries = rawThreads.map(parseThreadSummary).filter(Boolean);
+    saveContactsFromThreads(userId, allSummaries);
     const threads = [];
-    for (const thread of rawThreads) {
-      const summary = parseThreadSummary(thread);
-      if (!summary) continue;
-
+    for (const summary of allSummaries) {
       const email = summary.fromEmail;
       const isApproved = approved.has(email);
       const isDenied = denied.has(email);

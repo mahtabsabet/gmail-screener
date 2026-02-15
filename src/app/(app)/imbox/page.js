@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import ThreadList, { ActionButton } from '@/components/ThreadList';
 import ThreadDetail from '@/components/ThreadDetail';
+import ContactCard from '@/components/ContactCard';
 
 export default function ImboxPage() {
   const [threads, setThreads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedThread, setSelectedThread] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [contactCard, setContactCard] = useState(null);
 
   const fetchThreads = useCallback(async () => {
     setLoading(true);
@@ -65,6 +67,7 @@ export default function ImboxPage() {
               threads={threads}
               selectedThreadId={selectedThread?.threadId}
               onThreadClick={openThread}
+              onSenderClick={setContactCard}
               emptyMessage="Your Imbox is empty. Approve senders in the Screener to see emails here."
               actions={(thread) => (
                 <>
@@ -103,6 +106,7 @@ export default function ImboxPage() {
             <ThreadDetail
               thread={selectedThread}
               onClose={() => setSelectedThread(null)}
+              onSenderClick={setContactCard}
               onReplySent={(threadId) => {
                 setSelectedThread(null);
                 fetchThreads();
@@ -143,6 +147,18 @@ export default function ImboxPage() {
             <p className="text-sm">Select an email to read</p>
           </div>
         </div>
+      )}
+
+      {contactCard && (
+        <ContactCard
+          email={contactCard.email}
+          name={contactCard.name}
+          onClose={() => setContactCard(null)}
+          onThreadClick={(thread) => {
+            setContactCard(null);
+            openThread(thread);
+          }}
+        />
       )}
     </div>
   );
