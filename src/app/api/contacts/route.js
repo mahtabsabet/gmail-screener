@@ -19,11 +19,17 @@ export async function GET(request) {
 
   // Get details + emails for a specific contact
   if (email) {
+    // Validate email format to prevent Gmail query injection
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
+    }
     try {
+      // Quote email in Gmail query to prevent query operator injection
+      const safeEmail = email.replace(/"/g, '');
       const [contact, googleContact, threadList] = await Promise.all([
         Promise.resolve(getContact(userId, email)),
         lookupContactByEmail(userId, email),
-        searchThreads(userId, `from:${email} OR to:${email}`, 50),
+        searchThreads(userId, `from:"${safeEmail}" OR to:"${safeEmail}"`, 50),
       ]);
 
       let threads = [];
@@ -43,7 +49,8 @@ export async function GET(request) {
 
       return NextResponse.json({ contact: merged, threads });
     } catch (err) {
-      return NextResponse.json({ error: err.message }, { status: 500 });
+      console.error('Contact lookup error:', err);
+      return NextResponse.json({ error: 'Failed to fetch contact details' }, { status: 500 });
     }
   }
 

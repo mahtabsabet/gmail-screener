@@ -63,6 +63,7 @@ export async function GET(request) {
 
     return NextResponse.json({ threads, contacts });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('Search error:', err);
+    return NextResponse.json({ error: 'Search failed' }, { status: 500 });
   }
 }

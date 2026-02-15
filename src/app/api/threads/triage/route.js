@@ -8,8 +8,10 @@ export async function POST(request) {
   if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const { threadId, action } = await request.json();
-  if (!threadId || !action) {
-    return NextResponse.json({ error: 'threadId and action required' }, { status: 400 });
+
+  const VALID_ACTIONS = ['REPLY_LATER', 'SET_ASIDE', 'MOVE_TO_IMBOX', 'ARCHIVE', 'REMOVE'];
+  if (!threadId || !action || !VALID_ACTIONS.includes(action)) {
+    return NextResponse.json({ error: 'Valid threadId and action required' }, { status: 400 });
   }
 
   try {
@@ -74,6 +76,6 @@ export async function POST(request) {
     }
   } catch (err) {
     console.error('Triage error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: 'Triage operation failed' }, { status: 500 });
   }
 }

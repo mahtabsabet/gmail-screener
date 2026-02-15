@@ -1,10 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import DOMPurify from 'dompurify';
 
 export default function FocusReply({ thread, onClose, onReplySent, onSenderClick }) {
   const [replyBody, setReplyBody] = useState('');
   const [sending, setSending] = useState(false);
+
+  const sanitizeHtml = useMemo(() => {
+    return (html) => {
+      if (!html) return '';
+      return DOMPurify.sanitize(html, {
+        ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'u', 'em', 'strong', 'a', 'ul', 'ol', 'li',
+          'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code',
+          'div', 'span', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'img', 'hr'],
+        ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'style', 'width', 'height',
+          'target', 'rel', 'colspan', 'rowspan'],
+        ALLOW_DATA_ATTR: false,
+        FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input', 'textarea', 'select', 'button'],
+        FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
+      });
+    };
+  }, []);
 
   if (!thread) return null;
 
@@ -85,7 +102,7 @@ export default function FocusReply({ thread, onClose, onReplySent, onSenderClick
               </div>
               <div
                 className="text-sm text-gray-700 prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: msg.body || msg.snippet || '' }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(msg.body || msg.snippet || '') }}
               />
             </div>
           ))}
