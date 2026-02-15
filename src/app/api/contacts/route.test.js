@@ -124,7 +124,7 @@ describe('GET /api/contacts', () => {
       const data = await res.json();
 
       expect(data.contact.name).toBe('Local Name');
-      expect(data.contact.photoUrl).toBe('');
+      expect(data.contact.photoUrl).toMatch(/gravatar\.com\/avatar\//);
       expect(data.contact.phoneNumbers).toEqual([]);
       expect(data.threads).toEqual([]);
     });

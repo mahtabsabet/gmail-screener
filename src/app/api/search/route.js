@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
+import { createHash } from 'crypto';
 import { getSession } from '@/lib/session.js';
 import { searchThreads, getThreadsBatch, parseThreadSummary, searchGoogleContacts } from '@/lib/gmail.js';
 import { searchContacts, upsertContact } from '@/lib/db.js';
+
+function gravatarUrl(email) {
+  const hash = createHash('md5').update(email.trim().toLowerCase()).digest('hex');
+  return `https://www.gravatar.com/avatar/${hash}?s=80&d=404`;
+}
 
 export async function GET(request) {
   const userId = await getSession();
@@ -36,8 +42,12 @@ export async function GET(request) {
     }
 
     // Merge local + Google contacts, deduplicating by email
+    // Add Gravatar fallback for contacts without photos
     const seen = new Set(localContacts.map(c => c.email));
-    const contacts = [...localContacts];
+    const contacts = localContacts.map(c => ({
+      ...c,
+      photoUrl: c.photoUrl || gravatarUrl(c.email),
+    }));
     for (const gc of googleContacts) {
       if (!seen.has(gc.email)) {
         seen.add(gc.email);
@@ -45,7 +55,7 @@ export async function GET(request) {
           email: gc.email,
           name: gc.name,
           status: null,
-          photoUrl: gc.photoUrl,
+          photoUrl: gc.photoUrl || gravatarUrl(gc.email),
           organization: gc.organization,
         });
       }

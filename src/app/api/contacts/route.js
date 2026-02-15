@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
+import { createHash } from 'crypto';
 import { getSession } from '@/lib/session.js';
 import { searchContacts, getContact } from '@/lib/db.js';
 import { searchThreads, getThreadsBatch, parseThreadSummary, lookupContactByEmail, searchGoogleContacts } from '@/lib/gmail.js';
+
+function gravatarUrl(email, size = 200) {
+  const hash = createHash('md5').update(email.trim().toLowerCase()).digest('hex');
+  return `https://www.gravatar.com/avatar/${hash}?s=${size}&d=404`;
+}
 
 export async function GET(request) {
   const userId = await getSession();
@@ -26,11 +32,11 @@ export async function GET(request) {
         threads = rawThreads.map(parseThreadSummary).filter(Boolean);
       }
 
-      // Merge local contact data with Google People data
+      // Merge local contact data with Google People data, Gravatar as fallback
       const merged = {
         email,
         name: googleContact?.name || contact?.name || '',
-        photoUrl: googleContact?.photoUrl || '',
+        photoUrl: googleContact?.photoUrl || gravatarUrl(email),
         phoneNumbers: googleContact?.phoneNumbers || [],
         organizations: googleContact?.organizations || [],
       };

@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import ThreadList from '@/components/ThreadList';
 import FocusReply from '@/components/FocusReply';
 import ContactCard from '@/components/ContactCard';
+import ContactAvatar from '@/components/ContactAvatar';
 
 export default function SearchPage() {
   const [query, setQuery] = useState('');
@@ -87,18 +88,12 @@ export default function SearchPage() {
                     onClick={() => openContactCard({ email: contact.email, name: contact.name })}
                     className="w-full flex items-center gap-3 px-6 py-3 hover:bg-gray-50 transition-colors text-left"
                   >
-                    {contact.photoUrl ? (
-                      <img
-                        src={contact.photoUrl}
-                        alt={contact.name || contact.email}
-                        className="w-9 h-9 rounded-full flex-shrink-0 object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-semibold flex-shrink-0">
-                        {(contact.name || contact.email)[0].toUpperCase()}
-                      </div>
-                    )}
+                    <ContactAvatar
+                      photoUrl={contact.photoUrl}
+                      name={contact.name || contact.email}
+                      size="w-9 h-9"
+                      textSize="text-sm"
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium text-gray-900 truncate">
                         {contact.name || contact.email}

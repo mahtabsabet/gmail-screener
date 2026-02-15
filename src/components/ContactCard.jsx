@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import ContactAvatar from './ContactAvatar';
 
 function formatDate(dateStr) {
   if (!dateStr) return '';
@@ -38,8 +39,7 @@ export default function ContactCard({ email, name, onClose, onThreadClick }) {
   useEffect(() => { fetchContactData(); }, [fetchContactData]);
 
   const displayName = contact?.name || name || email.split('@')[0];
-  const initial = (displayName || email)[0].toUpperCase();
-  const photoUrl = contact?.photoUrl;
+  const photoUrl = contact?.photoUrl || null;
   const phoneNumbers = contact?.phoneNumbers || [];
   const organizations = contact?.organizations || [];
 
@@ -54,18 +54,12 @@ export default function ContactCard({ email, name, onClose, onThreadClick }) {
         <div className="px-6 py-5 border-b border-gray-200 bg-gray-50">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
-              {photoUrl ? (
-                <img
-                  src={photoUrl}
-                  alt={displayName}
-                  className="w-14 h-14 rounded-full flex-shrink-0 object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className="w-14 h-14 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xl font-bold flex-shrink-0">
-                  {initial}
-                </div>
-              )}
+              <ContactAvatar
+                photoUrl={photoUrl}
+                name={displayName}
+                size="w-14 h-14"
+                textSize="text-xl"
+              />
               <div className="min-w-0">
                 <h2 className="text-lg font-semibold text-gray-900 truncate">{displayName}</h2>
                 <p className="text-sm text-gray-500 truncate">{email}</p>
