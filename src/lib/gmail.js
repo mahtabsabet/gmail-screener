@@ -42,8 +42,8 @@ export async function exchangeCode(code) {
   };
 }
 
-export function getAuthedClient(userId) {
-  const user = getUser(userId);
+export async function getAuthedClient(userId) {
+  const user = await getUser(userId);
   if (!user) throw new Error('User not found');
 
   const client = getOAuth2Client();
@@ -60,15 +60,15 @@ export function getAuthedClient(userId) {
   return client;
 }
 
-export function getGmailClient(userId) {
-  const auth = getAuthedClient(userId);
+export async function getGmailClient(userId) {
+  const auth = await getAuthedClient(userId);
   return google.gmail({ version: 'v1', auth });
 }
 
 // ---- Gmail operations ----
 
 export async function listInboxThreads(userId, maxResults = 100) {
-  const gmail = getGmailClient(userId);
+  const gmail = await getGmailClient(userId);
   const res = await gmail.users.threads.list({
     userId: 'me',
     q: 'label:INBOX',
@@ -78,7 +78,7 @@ export async function listInboxThreads(userId, maxResults = 100) {
 }
 
 export async function getThread(userId, threadId) {
-  const gmail = getGmailClient(userId);
+  const gmail = await getGmailClient(userId);
   const res = await gmail.users.threads.get({
     userId: 'me',
     id: threadId,
@@ -90,7 +90,7 @@ export async function getThread(userId, threadId) {
 
 // Fetch multiple threads in parallel with concurrency limit
 export async function getThreadsBatch(userId, threadIds, concurrency = 10) {
-  const gmail = getGmailClient(userId);
+  const gmail = await getGmailClient(userId);
   const results = [];
   for (let i = 0; i < threadIds.length; i += concurrency) {
     const batch = threadIds.slice(i, i + concurrency);
@@ -113,7 +113,7 @@ export async function getThreadsBatch(userId, threadIds, concurrency = 10) {
 }
 
 export async function getThreadFull(userId, threadId) {
-  const gmail = getGmailClient(userId);
+  const gmail = await getGmailClient(userId);
   const res = await gmail.users.threads.get({
     userId: 'me',
     id: threadId,
@@ -221,8 +221,8 @@ export function parseFullThread(thread) {
 }
 
 export async function sendReply(userId, { threadId, to, subject, body, messageId, references }) {
-  const gmail = getGmailClient(userId);
-  const user = getUser(userId);
+  const gmail = await getGmailClient(userId);
+  const user = await getUser(userId);
 
   // Build References header: existing references + the message being replied to
   const refsHeader = references
@@ -258,7 +258,7 @@ export async function sendReply(userId, { threadId, to, subject, body, messageId
 }
 
 export async function searchThreads(userId, query, maxResults = 50) {
-  const gmail = getGmailClient(userId);
+  const gmail = await getGmailClient(userId);
   const res = await gmail.users.threads.list({
     userId: 'me',
     q: query,
@@ -268,7 +268,7 @@ export async function searchThreads(userId, query, maxResults = 50) {
 }
 
 export async function listSentThreads(userId, maxResults = 50) {
-  const gmail = getGmailClient(userId);
+  const gmail = await getGmailClient(userId);
   const res = await gmail.users.threads.list({
     userId: 'me',
     q: 'label:SENT',
@@ -278,7 +278,7 @@ export async function listSentThreads(userId, maxResults = 50) {
 }
 
 export async function modifyThreadLabels(userId, threadId, addLabelIds = [], removeLabelIds = []) {
-  const gmail = getGmailClient(userId);
+  const gmail = await getGmailClient(userId);
   const thread = await gmail.users.threads.get({
     userId: 'me',
     id: threadId,
@@ -310,7 +310,7 @@ export async function ensureLabel(userId, labelName) {
   const cacheKey = `${userId}:${labelName}`;
   if (labelIdCache[cacheKey]) return labelIdCache[cacheKey];
 
-  const gmail = getGmailClient(userId);
+  const gmail = await getGmailClient(userId);
   const res = await gmail.users.labels.list({ userId: 'me' });
   const existing = (res.data.labels || []).find(l => l.name === labelName);
   if (existing) {
@@ -344,7 +344,7 @@ export async function getLabelIdForFolder(userId, folder) {
  * Mark all messages in a thread as read (remove UNREAD label).
  */
 export async function markThreadRead(userId, threadId) {
-  const gmail = getGmailClient(userId);
+  const gmail = await getGmailClient(userId);
   await gmail.users.threads.modify({
     userId: 'me',
     id: threadId,
@@ -354,8 +354,8 @@ export async function markThreadRead(userId, threadId) {
 
 // ---- People API (Google Contacts) ----
 
-function getPeopleClient(userId) {
-  const auth = getAuthedClient(userId);
+async function getPeopleClient(userId) {
+  const auth = await getAuthedClient(userId);
   return google.people({ version: 'v1', auth });
 }
 
@@ -391,7 +391,7 @@ function extractPersonInfo(person, targetEmail) {
  * Returns { name, email, photoUrl, phoneNumbers, organizations } or null.
  */
 export async function lookupContactByEmail(userId, email) {
-  const people = getPeopleClient(userId);
+  const people = await getPeopleClient(userId);
   const emailLower = email.toLowerCase();
   const readMask = 'names,emailAddresses,photos,phoneNumbers,organizations';
 
@@ -450,7 +450,7 @@ export async function lookupContactByEmail(userId, email) {
  * Returns array of { name, email, photoUrl, organization }.
  */
 export async function searchGoogleContacts(userId, query, pageSize = 10) {
-  const people = getPeopleClient(userId);
+  const people = await getPeopleClient(userId);
 
   const searches = [
     people.people.searchContacts({

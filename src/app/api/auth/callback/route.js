@@ -19,7 +19,7 @@ export async function GET(request) {
   try {
     const { userId, email, accessToken, refreshToken, tokenExpiry } = await exchangeCode(code);
 
-    upsertUser({ userId, email, accessToken, refreshToken, tokenExpiry });
+    await upsertUser({ userId, email, accessToken, refreshToken, tokenExpiry });
     await setSession(userId);
 
     return NextResponse.redirect(new URL('/imbox', request.url));

@@ -21,7 +21,7 @@ export async function GET(request) {
   if (email) {
     try {
       const [contact, googleContact, threadList] = await Promise.all([
-        Promise.resolve(getContact(userId, email)),
+        getContact(userId, email),
         lookupContactByEmail(userId, email),
         searchThreads(userId, `from:${email} OR to:${email}`, 50),
       ]);
@@ -51,7 +51,7 @@ export async function GET(request) {
   if (q && q.trim()) {
     const trimmed = q.trim();
     const [localContacts, googleContacts] = await Promise.all([
-      Promise.resolve(searchContacts(userId, trimmed)),
+      searchContacts(userId, trimmed),
       searchGoogleContacts(userId, trimmed),
     ]);
 

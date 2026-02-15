@@ -7,7 +7,7 @@ export default async function AuthWrapper({ children }) {
   const userId = await getSession();
   if (!userId) redirect('/');
 
-  const user = getUser(userId);
+  const user = await getUser(userId);
   if (!user) redirect('/');
 
   return <AppShell email={user.email}>{children}</AppShell>;
