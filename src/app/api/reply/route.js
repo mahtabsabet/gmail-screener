@@ -13,6 +13,11 @@ export async function POST(request) {
     return NextResponse.json({ error: 'threadId, to, and body are required' }, { status: 400 });
   }
 
+  // Validate recipient email format
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    return NextResponse.json({ error: 'Invalid recipient email address' }, { status: 400 });
+  }
+
   try {
     const result = await sendReply(userId, {
       threadId,
@@ -38,6 +43,6 @@ export async function POST(request) {
     return NextResponse.json({ success: true, messageId: result.id });
   } catch (err) {
     console.error('Send reply error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to send reply' }, { status: 500 });
   }
 }

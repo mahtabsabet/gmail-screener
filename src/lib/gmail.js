@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import crypto from 'crypto';
 import { getUser, updateTokens } from './db.js';
 
 const SCOPES = [
@@ -16,12 +17,17 @@ export function getOAuth2Client() {
   );
 }
 
-export function getAuthUrl() {
+export function generateOAuthState() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+export function getAuthUrl(state) {
   const client = getOAuth2Client();
   return client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
     scope: SCOPES,
+    state,
   });
 }
 
@@ -220,22 +226,39 @@ export function parseFullThread(thread) {
   }));
 }
 
+// Sanitize a value for use in an email header (strip CR/LF to prevent header injection)
+function sanitizeHeaderValue(value) {
+  if (!value) return '';
+  return value.replace(/[\r\n]/g, '').trim();
+}
+
 export async function sendReply(userId, { threadId, to, subject, body, messageId, references }) {
   const gmail = getGmailClient(userId);
   const user = getUser(userId);
 
-  // Build References header: existing references + the message being replied to
-  const refsHeader = references
-    ? `${references} ${messageId}`
-    : messageId;
+  // Sanitize all header values to prevent header injection
+  const safeTo = sanitizeHeaderValue(to);
+  const safeSubject = sanitizeHeaderValue(subject);
+  const safeMessageId = sanitizeHeaderValue(messageId);
+  const safeReferences = sanitizeHeaderValue(references);
 
-  const replySubject = subject.startsWith('Re:') ? subject : `Re: ${subject}`;
+  // Validate the "to" field looks like an email address
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeTo)) {
+    throw new Error('Invalid recipient email address');
+  }
+
+  // Build References header: existing references + the message being replied to
+  const refsHeader = safeReferences
+    ? `${safeReferences} ${safeMessageId}`
+    : safeMessageId;
+
+  const replySubject = safeSubject.startsWith('Re:') ? safeSubject : `Re: ${safeSubject}`;
 
   const messageParts = [
     `From: ${user.email}`,
-    `To: ${to}`,
+    `To: ${safeTo}`,
     `Subject: ${replySubject}`,
-    `In-Reply-To: ${messageId}`,
+    `In-Reply-To: ${safeMessageId}`,
     `References: ${refsHeader}`,
     'Content-Type: text/html; charset=utf-8',
     'MIME-Version: 1.0',

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import DOMPurify from 'dompurify';
 
 function formatFullDate(dateStr) {
   if (!dateStr) return '';
@@ -171,10 +172,26 @@ export default function ThreadDetail({ thread, onClose, actions, onReplySent, on
   );
 }
 
+function sanitizeHtml(html) {
+  if (!html) return '';
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'u', 'em', 'strong', 'a', 'ul', 'ol', 'li',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code',
+      'div', 'span', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'img', 'hr'],
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'style', 'width', 'height',
+      'target', 'rel', 'colspan', 'rowspan'],
+    ALLOW_DATA_ATTR: false,
+    ADD_ATTR: ['target'],
+    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input', 'textarea', 'select', 'button'],
+    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
+  });
+}
+
 function MessageItem({ msg, defaultExpanded, onSenderClick }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const senderName = msg.fromName || msg.fromEmail || 'Unknown';
   const senderEmail = msg.fromEmail || '';
+  const sanitizedBody = useMemo(() => sanitizeHtml(msg.body), [msg.body]);
 
   return (
     <div className="border-b border-gray-100 last:border-b-0">
@@ -214,10 +231,10 @@ function MessageItem({ msg, defaultExpanded, onSenderClick }) {
       {/* Body */}
       {expanded && (
         <div className="px-8 pb-6">
-          {msg.body ? (
+          {sanitizedBody ? (
             <div
               className="text-sm text-gray-700 prose prose-sm max-w-none"
-              dangerouslySetInnerHTML={{ __html: msg.body }}
+              dangerouslySetInnerHTML={{ __html: sanitizedBody }}
             />
           ) : msg.snippet ? (
             <div className="text-sm text-gray-700 whitespace-pre-wrap">{msg.snippet}</div>

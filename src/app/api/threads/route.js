@@ -32,7 +32,8 @@ export async function GET(request) {
 
       return NextResponse.json({ thread: { threadId: thread.id, messages } });
     } catch (err) {
-      return NextResponse.json({ error: err.message }, { status: 500 });
+      console.error('Threads API error:', err);
+    return NextResponse.json({ error: 'Failed to fetch threads' }, { status: 500 });
     }
   }
 
@@ -59,7 +60,8 @@ export async function GET(request) {
       saveContactsFromThreads(userId, threads);
       return NextResponse.json({ threads });
     } catch (err) {
-      return NextResponse.json({ error: err.message }, { status: 500 });
+      console.error('Threads API error:', err);
+    return NextResponse.json({ error: 'Failed to fetch threads' }, { status: 500 });
     }
   }
 
@@ -93,6 +95,7 @@ export async function GET(request) {
 
     return NextResponse.json({ threads });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('Threads API error:', err);
+    return NextResponse.json({ error: 'Failed to fetch threads' }, { status: 500 });
   }
 }
