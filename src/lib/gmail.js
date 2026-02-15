@@ -6,6 +6,8 @@ const SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/contacts.readonly',
+  'https://www.googleapis.com/auth/contacts.other.readonly',
+  'https://www.googleapis.com/auth/directory.readonly',
 ];
 
 export function getOAuth2Client() {
@@ -359,45 +361,81 @@ function getPeopleClient(userId) {
   return google.people({ version: 'v1', auth });
 }
 
+function extractPersonInfo(person, targetEmail) {
+  if (!person) return null;
+
+  const name = person.names?.[0]?.displayName || '';
+  // Filter out default silhouette photos (they contain "default" in the URL)
+  const photo = person.photos?.[0];
+  const photoUrl = (photo && !photo.default) ? (photo.url || '') : '';
+  const phoneNumbers = (person.phoneNumbers || []).map(p => ({
+    value: p.value,
+    type: p.type || 'other',
+  }));
+  const organizations = (person.organizations || []).map(o => ({
+    name: o.name || '',
+    title: o.title || '',
+  }));
+
+  return {
+    name,
+    email: targetEmail,
+    photoUrl,
+    phoneNumbers,
+    organizations,
+  };
+}
+
 /**
  * Look up a contact by email address using Google People API.
+ * Searches saved contacts, "Other Contacts" (auto-saved from interactions),
+ * and the Google Workspace directory.
  * Returns { name, email, photoUrl, phoneNumbers, organizations } or null.
  */
 export async function lookupContactByEmail(userId, email) {
   const people = getPeopleClient(userId);
+  const emailLower = email.toLowerCase();
+  const readMask = 'names,emailAddresses,photos,phoneNumbers,organizations';
+
+  // Search saved contacts, other contacts, and directory in parallel
+  const searches = [
+    people.people.searchContacts({
+      query: email,
+      readMask,
+      pageSize: 5,
+    }).catch(() => ({ data: {} })),
+
+    people.otherContacts.search({
+      query: email,
+      readMask: 'names,emailAddresses,photos',
+      pageSize: 5,
+    }).catch(() => ({ data: {} })),
+
+    people.people.searchDirectoryPeople({
+      query: email,
+      readMask,
+      sources: ['DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE'],
+      pageSize: 5,
+    }).catch(() => ({ data: {} })),
+  ];
 
   try {
-    // Search across the user's contacts and directory
-    const res = await people.people.searchContacts({
-      query: email,
-      readMask: 'names,emailAddresses,photos,phoneNumbers,organizations',
-      pageSize: 5,
-    });
+    const [contactsRes, otherRes, directoryRes] = await Promise.all(searches);
 
-    const results = res.data.results || [];
-    // Find the result that matches the email
-    for (const result of results) {
-      const person = result.person;
-      if (!person) continue;
+    // Collect all person results from all sources
+    const allPersons = [
+      ...(contactsRes.data.results || []).map(r => r.person),
+      ...(otherRes.data.results || []).map(r => r.person),
+      ...(directoryRes.data.people || []),
+    ].filter(Boolean);
 
+    // Find one that matches the email
+    for (const person of allPersons) {
       const emails = (person.emailAddresses || []).map(e => e.value?.toLowerCase());
-      if (!emails.includes(email.toLowerCase())) continue;
-
-      const name = person.names?.[0]?.displayName || '';
-      const photoUrl = person.photos?.[0]?.url || '';
-      const phoneNumbers = (person.phoneNumbers || []).map(p => ({
-        value: p.value,
-        type: p.type || 'other',
-      }));
-      const organizations = (person.organizations || []).map(o => ({
-        name: o.name || '',
-        title: o.title || '',
-      }));
-
-      return { name, email, photoUrl, phoneNumbers, organizations };
+      if (!emails.includes(emailLower)) continue;
+      return extractPersonInfo(person, email);
     }
   } catch (err) {
-    // If contacts.readonly scope not yet granted, fail gracefully
     if (err.code === 403 || err.code === 401) {
       console.warn('People API not authorized:', err.message);
       return null;
@@ -410,29 +448,59 @@ export async function lookupContactByEmail(userId, email) {
 
 /**
  * Search Google Contacts by name or email.
- * Returns array of { name, email, photoUrl }.
+ * Searches saved contacts, "Other Contacts", and Workspace directory.
+ * Returns array of { name, email, photoUrl, organization }.
  */
 export async function searchGoogleContacts(userId, query, pageSize = 10) {
   const people = getPeopleClient(userId);
 
-  try {
-    const res = await people.people.searchContacts({
+  const searches = [
+    people.people.searchContacts({
       query,
       readMask: 'names,emailAddresses,photos,organizations',
       pageSize,
-    });
+    }).catch(() => ({ data: {} })),
 
-    const results = res.data.results || [];
-    return results
-      .map(r => r.person)
-      .filter(Boolean)
-      .map(person => ({
+    people.otherContacts.search({
+      query,
+      readMask: 'names,emailAddresses,photos',
+      pageSize,
+    }).catch(() => ({ data: {} })),
+
+    people.people.searchDirectoryPeople({
+      query,
+      readMask: 'names,emailAddresses,photos,organizations',
+      sources: ['DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE'],
+      pageSize,
+    }).catch(() => ({ data: {} })),
+  ];
+
+  try {
+    const [contactsRes, otherRes, directoryRes] = await Promise.all(searches);
+
+    const allPersons = [
+      ...(contactsRes.data.results || []).map(r => r.person),
+      ...(otherRes.data.results || []).map(r => r.person),
+      ...(directoryRes.data.people || []),
+    ].filter(Boolean);
+
+    // Deduplicate by email
+    const seen = new Set();
+    const results = [];
+    for (const person of allPersons) {
+      const email = person.emailAddresses?.[0]?.value?.toLowerCase();
+      if (!email || seen.has(email)) continue;
+      seen.add(email);
+
+      const photo = person.photos?.[0];
+      results.push({
         name: person.names?.[0]?.displayName || '',
-        email: person.emailAddresses?.[0]?.value?.toLowerCase() || '',
-        photoUrl: person.photos?.[0]?.url || '',
+        email,
+        photoUrl: (photo && !photo.default) ? (photo.url || '') : '',
         organization: person.organizations?.[0]?.name || '',
-      }))
-      .filter(c => c.email);
+      });
+    }
+    return results;
   } catch (err) {
     if (err.code === 403 || err.code === 401) {
       console.warn('People API not authorized:', err.message);

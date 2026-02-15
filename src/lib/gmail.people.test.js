@@ -15,8 +15,11 @@ jest.mock('./db.js', () => ({
   updateTokens: jest.fn(),
 }));
 
-// Mock googleapis
+// Mock googleapis — three People API search methods
 const mockSearchContacts = jest.fn();
+const mockSearchOtherContacts = jest.fn();
+const mockSearchDirectoryPeople = jest.fn();
+
 jest.mock('googleapis', () => ({
   google: {
     auth: {
@@ -29,6 +32,10 @@ jest.mock('googleapis', () => ({
     people: jest.fn(() => ({
       people: {
         searchContacts: mockSearchContacts,
+        searchDirectoryPeople: mockSearchDirectoryPeople,
+      },
+      otherContacts: {
+        search: mockSearchOtherContacts,
       },
     })),
     gmail: jest.fn(() => ({})),
@@ -40,12 +47,22 @@ import { lookupContactByEmail, searchGoogleContacts } from './gmail.js';
 
 const USER = 'test-user';
 
+// Helper to set default empty responses for all three search methods
+function mockAllEmpty() {
+  mockSearchContacts.mockResolvedValue({ data: { results: [] } });
+  mockSearchOtherContacts.mockResolvedValue({ data: { results: [] } });
+  mockSearchDirectoryPeople.mockResolvedValue({ data: { people: [] } });
+}
+
 beforeEach(() => {
   mockSearchContacts.mockReset();
+  mockSearchOtherContacts.mockReset();
+  mockSearchDirectoryPeople.mockReset();
+  mockAllEmpty();
 });
 
 describe('lookupContactByEmail', () => {
-  test('returns contact data when found', async () => {
+  test('returns contact data when found in saved contacts', async () => {
     mockSearchContacts.mockResolvedValue({
       data: {
         results: [{
@@ -77,9 +94,43 @@ describe('lookupContactByEmail', () => {
     expect(result.organizations[0]).toEqual({ name: 'Dunder Mifflin', title: 'Regional Manager' });
   });
 
-  test('returns null when no results', async () => {
-    mockSearchContacts.mockResolvedValue({ data: { results: [] } });
+  test('finds contact in Other Contacts when not in saved', async () => {
+    mockSearchOtherContacts.mockResolvedValue({
+      data: {
+        results: [{
+          person: {
+            names: [{ displayName: 'Other Person' }],
+            emailAddresses: [{ value: 'other@example.com' }],
+            photos: [{ url: 'https://photo.jpg' }],
+          },
+        }],
+      },
+    });
 
+    const result = await lookupContactByEmail(USER, 'other@example.com');
+    expect(result).not.toBeNull();
+    expect(result.name).toBe('Other Person');
+    expect(result.photoUrl).toBe('https://photo.jpg');
+  });
+
+  test('finds contact in directory when not in contacts or other', async () => {
+    mockSearchDirectoryPeople.mockResolvedValue({
+      data: {
+        people: [{
+          names: [{ displayName: 'Directory Person' }],
+          emailAddresses: [{ value: 'dir@company.com' }],
+          photos: [{ url: 'https://dir-photo.jpg' }],
+          organizations: [{ name: 'Company', title: 'Engineer' }],
+        }],
+      },
+    });
+
+    const result = await lookupContactByEmail(USER, 'dir@company.com');
+    expect(result).not.toBeNull();
+    expect(result.name).toBe('Directory Person');
+  });
+
+  test('returns null when no results from any source', async () => {
     const result = await lookupContactByEmail(USER, 'nobody@example.com');
     expect(result).toBeNull();
   });
@@ -126,7 +177,6 @@ describe('lookupContactByEmail', () => {
         results: [{
           person: {
             emailAddresses: [{ value: 'minimal@example.com' }],
-            // no names, photos, phoneNumbers, organizations
           },
         }],
       },
@@ -140,29 +190,51 @@ describe('lookupContactByEmail', () => {
     expect(result.organizations).toEqual([]);
   });
 
-  test('returns null on 403 error (scope not granted)', async () => {
+  test('filters out default silhouette photos', async () => {
+    mockSearchContacts.mockResolvedValue({
+      data: {
+        results: [{
+          person: {
+            emailAddresses: [{ value: 'test@example.com' }],
+            photos: [{ url: 'https://lh3.google.com/default', default: true }],
+          },
+        }],
+      },
+    });
+
+    const result = await lookupContactByEmail(USER, 'test@example.com');
+    expect(result.photoUrl).toBe('');
+  });
+
+  test('returns null on 403 error from all sources', async () => {
     const err = new Error('Insufficient permissions');
     err.code = 403;
     mockSearchContacts.mockRejectedValue(err);
+    mockSearchOtherContacts.mockRejectedValue(err);
+    mockSearchDirectoryPeople.mockRejectedValue(err);
 
     const result = await lookupContactByEmail(USER, 'michael@example.com');
     expect(result).toBeNull();
   });
 
-  test('returns null on 401 error', async () => {
-    const err = new Error('Unauthorized');
-    err.code = 401;
-    mockSearchContacts.mockRejectedValue(err);
+  test('succeeds even when some sources fail', async () => {
+    // searchContacts fails, but otherContacts succeeds
+    mockSearchContacts.mockRejectedValue(new Error('fail'));
+    mockSearchOtherContacts.mockResolvedValue({
+      data: {
+        results: [{
+          person: {
+            names: [{ displayName: 'Found' }],
+            emailAddresses: [{ value: 'found@example.com' }],
+            photos: [{ url: 'https://photo.jpg' }],
+          },
+        }],
+      },
+    });
 
-    const result = await lookupContactByEmail(USER, 'michael@example.com');
-    expect(result).toBeNull();
-  });
-
-  test('returns null on other API errors', async () => {
-    mockSearchContacts.mockRejectedValue(new Error('Network error'));
-
-    const result = await lookupContactByEmail(USER, 'michael@example.com');
-    expect(result).toBeNull();
+    const result = await lookupContactByEmail(USER, 'found@example.com');
+    expect(result).not.toBeNull();
+    expect(result.name).toBe('Found');
   });
 
   test('skips results with no person object', async () => {
@@ -178,49 +250,65 @@ describe('lookupContactByEmail', () => {
 });
 
 describe('searchGoogleContacts', () => {
-  test('returns array of contacts', async () => {
+  test('returns merged results from all sources', async () => {
     mockSearchContacts.mockResolvedValue({
       data: {
-        results: [
-          {
-            person: {
-              names: [{ displayName: 'Michael Scott' }],
-              emailAddresses: [{ value: 'michael@dundermifflin.com' }],
-              photos: [{ url: 'https://photo1.jpg' }],
-              organizations: [{ name: 'Dunder Mifflin' }],
-            },
+        results: [{
+          person: {
+            names: [{ displayName: 'Saved Contact' }],
+            emailAddresses: [{ value: 'saved@example.com' }],
+            photos: [{ url: 'https://photo1.jpg' }],
+            organizations: [{ name: 'Saved Co' }],
           },
-          {
-            person: {
-              names: [{ displayName: 'Michael Jordan' }],
-              emailAddresses: [{ value: 'michael@nba.com' }],
-              photos: [],
-              organizations: [{ name: 'NBA' }],
-            },
+        }],
+      },
+    });
+    mockSearchOtherContacts.mockResolvedValue({
+      data: {
+        results: [{
+          person: {
+            names: [{ displayName: 'Other Contact' }],
+            emailAddresses: [{ value: 'other@example.com' }],
+            photos: [{ url: 'https://photo2.jpg' }],
           },
-        ],
+        }],
       },
     });
 
-    const results = await searchGoogleContacts(USER, 'Michael');
+    const results = await searchGoogleContacts(USER, 'example');
     expect(results).toHaveLength(2);
-    expect(results[0]).toEqual({
-      name: 'Michael Scott',
-      email: 'michael@dundermifflin.com',
-      photoUrl: 'https://photo1.jpg',
-      organization: 'Dunder Mifflin',
+    expect(results[0].email).toBe('saved@example.com');
+    expect(results[1].email).toBe('other@example.com');
+  });
+
+  test('deduplicates across sources by email', async () => {
+    mockSearchContacts.mockResolvedValue({
+      data: {
+        results: [{
+          person: {
+            names: [{ displayName: 'From Contacts' }],
+            emailAddresses: [{ value: 'same@example.com' }],
+          },
+        }],
+      },
     });
-    expect(results[1]).toEqual({
-      name: 'Michael Jordan',
-      email: 'michael@nba.com',
-      photoUrl: '',
-      organization: 'NBA',
+    mockSearchOtherContacts.mockResolvedValue({
+      data: {
+        results: [{
+          person: {
+            names: [{ displayName: 'From Other' }],
+            emailAddresses: [{ value: 'same@example.com' }],
+          },
+        }],
+      },
     });
+
+    const results = await searchGoogleContacts(USER, 'same');
+    expect(results).toHaveLength(1);
+    expect(results[0].name).toBe('From Contacts'); // first source wins
   });
 
   test('returns empty array when no results', async () => {
-    mockSearchContacts.mockResolvedValue({ data: { results: [] } });
-
     const results = await searchGoogleContacts(USER, 'nobody');
     expect(results).toEqual([]);
   });
@@ -232,7 +320,6 @@ describe('searchGoogleContacts', () => {
           {
             person: {
               names: [{ displayName: 'No Email Person' }],
-              // no emailAddresses
             },
           },
           {
@@ -254,13 +341,8 @@ describe('searchGoogleContacts', () => {
     const err = new Error('Forbidden');
     err.code = 403;
     mockSearchContacts.mockRejectedValue(err);
-
-    const results = await searchGoogleContacts(USER, 'test');
-    expect(results).toEqual([]);
-  });
-
-  test('returns empty array on generic error', async () => {
-    mockSearchContacts.mockRejectedValue(new Error('Something went wrong'));
+    mockSearchOtherContacts.mockRejectedValue(err);
+    mockSearchDirectoryPeople.mockRejectedValue(err);
 
     const results = await searchGoogleContacts(USER, 'test');
     expect(results).toEqual([]);
@@ -280,5 +362,22 @@ describe('searchGoogleContacts', () => {
 
     const results = await searchGoogleContacts(USER, 'test');
     expect(results[0].email).toBe('test@example.com');
+  });
+
+  test('filters out default silhouette photos', async () => {
+    mockSearchContacts.mockResolvedValue({
+      data: {
+        results: [{
+          person: {
+            names: [{ displayName: 'Test' }],
+            emailAddresses: [{ value: 'test@example.com' }],
+            photos: [{ url: 'https://default.jpg', default: true }],
+          },
+        }],
+      },
+    });
+
+    const results = await searchGoogleContacts(USER, 'test');
+    expect(results[0].photoUrl).toBe('');
   });
 });
