@@ -1,111 +1,193 @@
-# Gmail Sender Screener
+# Gatekeeper
 
-A Chrome extension that adds **Hey-style sender screening** directly into Gmail. Hover over any inbox row to **screen out** a sender. Hover over any row in the Screenout folder to **screen them back in**.
+A HEY-style email screening web application for Gmail. Take control of who gets into your inbox with an elegant triaging system.
 
-All decisions are stored as **Gmail filters** — no local database, and screening works on **all devices** including mobile.
+## What is Gatekeeper?
 
-## How it works
+Gatekeeper brings HEY-style sender screening to your Gmail account through a modern web interface. Instead of fighting an overflowing inbox, emails from new senders land in a **Screener** folder where you can:
 
-1. **In your inbox**: hover over any email row to reveal a **"Screen out"** button
-2. Clicking it:
-   - Creates a Gmail filter for that sender (skip inbox + apply Screenout label)
-   - Moves their existing inbox messages to Screenout
-   - The filter ensures future emails are screened on **all devices**
-3. **In the Screenout folder** (`#label/Screenout`): hover to reveal a **"Screen in"** button
-4. Clicking it:
-   - Deletes the Gmail filter
-   - Moves their messages back to inbox
-5. **Undo** snackbar appears after screening out, in case you misclick
+- **Allow** them into your Imbox (the important inbox)
+- **Screen Out** them permanently
+- **Set Aside** them for later review
 
-## Data model
+Once allowed, senders' future emails go directly to your Imbox. Screen out senders you never want to hear from. Set aside newsletters and FYI emails to read when you have time.
 
-There is no local sender database. Gmail filters **are** the data:
+## Features
 
-| Action | What happens |
-|---|---|
-| Screen out | Gmail filter created (`from:sender` → skip inbox + Screenout label) |
-| Screen in | Gmail filter deleted, messages moved back to inbox |
-
-The options page reads directly from Gmail's filter list.
-
-## Setup
-
-### 1. Create a Google Cloud project
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project (or select existing)
-3. Enable the **Gmail API** (APIs & Services → Library)
-
-### 2. Create OAuth credentials
-
-1. Go to **APIs & Services → Credentials**
-2. Click **Create Credentials → OAuth client ID**
-3. Application type: **Chrome extension**
-4. Enter your extension ID (see step 4)
-5. Copy the **Client ID**
-
-### 3. Configure the extension
-
-Replace the placeholder in `manifest.json`:
-```json
-"oauth2": {
-  "client_id": "YOUR_ACTUAL_CLIENT_ID.apps.googleusercontent.com",
-  ...
-}
-```
-
-### 4. Load in Chrome
-
-1. Open `chrome://extensions/`
-2. Enable **Developer mode**
-3. Click **Load unpacked**, select this folder
-4. Note the **Extension ID** — use it in step 2 if you haven't already
-
-### 5. OAuth consent screen
-
-1. Google Cloud Console → **APIs & Services → OAuth consent screen**
-2. Choose **External**, fill required fields
-3. Add scopes: `gmail.modify`, `gmail.settings.basic`
-4. Add your account as a test user
-
-### 6. Use it
-
-1. Open [Gmail](https://mail.google.com)
-2. Sign in when prompted by the extension
-3. Hover over inbox rows → **Screen out**
-4. Visit Screenout folder → hover → **Screen in**
+- **Screener Mode**: Route all inbound mail through a screener for triage
+- **The Imbox**: Your curated inbox with only emails from approved senders
+- **Reply Later**: Mark emails you need to respond to
+- **Set Aside**: File away emails for later review
+- **Screened Out**: View emails from permanently blocked senders
+- **Contact Cards**: Rich contact information with Google People API integration
+- **Split-pane Email Viewer**: List on the left, detail on the right
+- **Gmail Sync**: Bidirectional sync with Gmail labels
+- **Search**: Find emails across all folders
 
 ## Architecture
 
+- **Next.js 15** with App Router
+- **React 19** for the UI
+- **SQLite** (better-sqlite3) for local data storage
+- **Gmail API** for email operations
+- **Google People API** for contact enrichment
+- **Tailwind CSS** for styling
+
+### Project Structure
+
 ```
-├── manifest.json       # MV3 manifest with OAuth2
-├── background.js       # Service worker: Gmail API (filters, labels, messages)
-├── content.js          # Content script: DOM observation, button injection
-├── content.css         # Hover-to-reveal button styles, toast
-├── popup.html/js       # Toolbar popup (count + sign-in)
-├── options.html/js/css # Options page (list/remove screened-out senders)
-└── icons/              # Extension icons
+├── src/
+│   ├── app/
+│   │   ├── imbox/           # The curated inbox
+│   │   ├── screener/        # Triage new senders
+│   │   ├── reply-later/     # Emails marked for reply
+│   │   ├── set-aside/       # Filed emails
+│   │   ├── screened-out/    # Blocked senders
+│   │   ├── sent/            # Sent mail
+│   │   ├── search/          # Search interface
+│   │   ├── api/             # API routes
+│   │   │   ├── auth/        # OAuth flow
+│   │   │   ├── threads/     # Email operations
+│   │   │   ├── contacts/    # Contact enrichment
+│   │   │   └── senders/     # Sender management
+│   │   ├── layout.js        # Root layout
+│   │   └── page.js          # Landing page
+│   ├── components/          # React components
+│   │   ├── AppShell.jsx     # Main app layout
+│   │   ├── AuthWrapper.jsx  # Authentication wrapper
+│   │   ├── ThreadList.jsx   # Email list view
+│   │   ├── ThreadDetail.jsx # Email detail view
+│   │   ├── ContactCard.jsx  # Contact sidebar
+│   │   ├── ContactAvatar.jsx # Contact photo display
+│   │   └── FocusReply.jsx   # Reply composer
+│   └── lib/                 # Utilities
+│       ├── db.js            # SQLite operations
+│       ├── gmail.js         # Gmail API client
+│       └── session.js       # Session management
+└── gatekeeper.db            # SQLite database
 ```
 
-### Permissions
+## Setup
 
-| Permission | Why |
-|---|---|
-| `identity` | OAuth via `chrome.identity.getAuthToken()` |
-| `storage` | Cache Screenout label ID locally |
-| `mail.google.com` | Content script injection |
-| `googleapis.com` | Gmail API calls |
+### 1. Create a Google Cloud Project
 
-### Gmail API scopes
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project
+3. Enable **Gmail API** and **People API**
 
-| Scope | Why |
-|---|---|
-| `gmail.modify` | Create labels, modify message labels |
-| `gmail.settings.basic` | Create/delete Gmail filters |
+### 2. Create OAuth Credentials
+
+1. Go to **APIs & Services → Credentials**
+2. Click **Create Credentials → OAuth client ID**
+3. Application type: **Web application**
+4. Authorized JavaScript origins: `http://localhost:3000`
+5. Authorized redirect URIs: `http://localhost:3000/api/auth/callback`
+6. Copy the **Client ID** and **Client Secret**
+
+### 3. Configure OAuth Consent Screen
+
+1. **APIs & Services → OAuth consent screen**
+2. User type: **External**
+3. Fill in required fields
+4. Add scopes:
+   - `https://www.googleapis.com/auth/gmail.modify`
+   - `https://www.googleapis.com/auth/gmail.settings.basic`
+   - `https://www.googleapis.com/auth/contacts.readonly`
+5. Add your Google account as a test user
+
+### 4. Environment Setup
+
+Create `.env.local` in the project root:
+
+```bash
+GOOGLE_CLIENT_ID=your_client_id_here.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your_client_secret_here
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/callback
+SESSION_SECRET=random_string_at_least_32_characters_long
+```
+
+Generate a session secret:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+### 5. Install Dependencies
+
+```bash
+npm install
+```
+
+### 6. Run the Application
+
+Development mode:
+```bash
+npm run dev
+```
+
+Production build:
+```bash
+npm run build
+npm start
+```
+
+Visit [http://localhost:3000](http://localhost:3000)
+
+### 7. First Use
+
+1. Click **Sign in with Google**
+2. Authorize the requested Gmail and Contacts scopes
+3. Enable **Screener Mode** from the landing page
+4. New emails will route to the Screener for triage
+
+## How It Works
+
+### Screener Mode
+
+When enabled, Gatekeeper creates a Gmail filter that routes all inbound emails (not from you) to a "Gatekeeper/Screener" label. These emails appear in your Screener folder for triage:
+
+- **Allow**: Adds sender to approved list, future emails go to Imbox
+- **Screen Out**: Blocks sender, their emails go to Screened Out folder
+- **Set Aside**: Files this email away without approving the sender
+
+### Gmail Label Sync
+
+Gatekeeper syncs with Gmail using a `Gatekeeper/` label hierarchy:
+
+- `Gatekeeper/Screener` - Emails awaiting triage
+- `Gatekeeper/Imbox` - Approved sender emails
+- `Gatekeeper/ReplyLater` - Marked for reply
+- `Gatekeeper/SetAside` - Filed emails
+- `Gatekeeper/ScreenedOut` - Blocked senders
+
+Actions in Gatekeeper immediately sync to Gmail labels, and vice versa.
+
+### Data Storage
+
+- **SQLite database** stores sender decisions, session data, and contact cache
+- **No email content** is stored - only metadata (sender, subject, snippet, thread IDs)
+- **Gmail API** is the source of truth for all email content
 
 ## Privacy
 
-See [PRIVACY.md](PRIVACY.md). TL;DR: no email content is read or stored. The only data is Gmail filters (which live in your Gmail account) and a cached label ID.
+See [PRIVACY.md](PRIVACY.md) for full details.
+
+**TL;DR**: Gatekeeper only accesses email metadata (sender, subject, snippet). Full message content is fetched on-demand when you view an email and is never stored. Contact information is cached locally for performance.
+
+## Development
+
+### Run Tests
+
+```bash
+npm test
+```
+
+### Database Schema
+
+The SQLite database stores:
+- `users` - OAuth tokens and user info
+- `senders` - Sender triage decisions (allow, deny, set_aside)
+- `contacts` - Cached contact information from People API
+- `sessions` - User sessions
 
 ## License
 
