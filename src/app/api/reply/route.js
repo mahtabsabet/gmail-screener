@@ -24,7 +24,7 @@ export async function POST(request) {
     });
 
     // Auto-archive: if this thread was in Reply Later, remove the Gmail label and archive locally
-    const state = getThreadState(userId, threadId);
+    const state = await getThreadState(userId, threadId);
     if (state && state.folder === 'REPLY_LATER') {
       const labelId = await getLabelIdForFolder(userId, 'REPLY_LATER');
       if (labelId) {
@@ -32,7 +32,7 @@ export async function POST(request) {
           console.warn('Failed to remove Reply Later label:', err.message)
         );
       }
-      archiveThread(userId, threadId);
+      await archiveThread(userId, threadId);
     }
 
     return NextResponse.json({ success: true, messageId: result.id });

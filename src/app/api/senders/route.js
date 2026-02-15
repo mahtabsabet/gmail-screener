@@ -6,7 +6,7 @@ export async function GET() {
   const userId = await getSession();
   if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-  const senders = listSenders(userId);
+  const senders = await listSenders(userId);
   return NextResponse.json({ senders });
 }
 
@@ -19,7 +19,7 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Invalid email or status' }, { status: 400 });
   }
 
-  setSenderStatus(userId, email, status);
+  await setSenderStatus(userId, email, status);
   return NextResponse.json({ success: true, email, status });
 }
 
@@ -32,6 +32,6 @@ export async function DELETE(request) {
     return NextResponse.json({ error: 'Email required' }, { status: 400 });
   }
 
-  removeSender(userId, email);
+  await removeSender(userId, email);
   return NextResponse.json({ success: true });
 }

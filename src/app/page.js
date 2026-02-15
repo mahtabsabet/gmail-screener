@@ -5,7 +5,7 @@ import { getUser } from '@/lib/db.js';
 export default async function Home() {
   const userId = await getSession();
   if (userId) {
-    const user = getUser(userId);
+    const user = await getUser(userId);
     if (user) redirect('/imbox');
   }
 

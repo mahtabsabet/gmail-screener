@@ -26,7 +26,7 @@ export async function GET(request) {
     // Search emails, local contacts, and Google Contacts in parallel
     const [threadList, localContacts, googleContacts] = await Promise.all([
       searchThreads(userId, trimmed),
-      Promise.resolve(searchContacts(userId, trimmed)),
+      searchContacts(userId, trimmed),
       searchGoogleContacts(userId, trimmed),
     ]);
 
@@ -36,7 +36,7 @@ export async function GET(request) {
       threads = rawThreads.map(parseThreadSummary).filter(Boolean);
       for (const t of threads) {
         if (t.fromEmail && t.fromName && t.fromName !== t.fromEmail.split('@')[0]) {
-          try { upsertContact(userId, t.fromEmail, t.fromName); } catch {}
+          try { await upsertContact(userId, t.fromEmail, t.fromName); } catch {}
         }
       }
     }

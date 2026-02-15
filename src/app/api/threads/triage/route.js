@@ -19,7 +19,7 @@ export async function POST(request) {
         const folder = action; // 'REPLY_LATER' or 'SET_ASIDE'
 
         // Remove previous Gmail label if thread was in a different folder
-        const prev = getThreadState(userId, threadId);
+        const prev = await getThreadState(userId, threadId);
         if (prev && prev.folder !== folder && prev.folder !== 'IMBOX') {
           const oldLabelId = await getLabelIdForFolder(userId, prev.folder);
           if (oldLabelId) {
@@ -33,13 +33,13 @@ export async function POST(request) {
           await modifyThreadLabels(userId, threadId, [labelId], ['INBOX']);
         }
 
-        setThreadFolder(userId, threadId, folder);
+        await setThreadFolder(userId, threadId, folder);
         return NextResponse.json({ success: true });
       }
 
       case 'MOVE_TO_IMBOX': {
         // Remove the triage Gmail label and restore INBOX
-        const prev = getThreadState(userId, threadId);
+        const prev = await getThreadState(userId, threadId);
         if (prev && prev.folder !== 'IMBOX') {
           const oldLabelId = await getLabelIdForFolder(userId, prev.folder);
           if (oldLabelId) {
@@ -47,13 +47,13 @@ export async function POST(request) {
           }
         }
 
-        setThreadFolder(userId, threadId, 'IMBOX');
+        await setThreadFolder(userId, threadId, 'IMBOX');
         return NextResponse.json({ success: true });
       }
 
       case 'ARCHIVE': {
         // Remove triage label when archiving
-        const prev = getThreadState(userId, threadId);
+        const prev = await getThreadState(userId, threadId);
         if (prev && prev.folder !== 'IMBOX') {
           const oldLabelId = await getLabelIdForFolder(userId, prev.folder);
           if (oldLabelId) {
@@ -61,12 +61,12 @@ export async function POST(request) {
           }
         }
 
-        archiveThread(userId, threadId);
+        await archiveThread(userId, threadId);
         return NextResponse.json({ success: true });
       }
 
       case 'REMOVE':
-        removeThreadState(userId, threadId);
+        await removeThreadState(userId, threadId);
         return NextResponse.json({ success: true });
 
       default:

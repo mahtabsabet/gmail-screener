@@ -3,10 +3,10 @@ import { getSession } from '@/lib/session.js';
 import { getSenderStatus, getAllApprovedEmails, getAllDeniedEmails, getThreadsByFolder, upsertContact } from '@/lib/db.js';
 import { listInboxThreads, listSentThreads, getThread, getThreadsBatch, getThreadFull, parseThreadSummary, parseFullThread, markThreadRead } from '@/lib/gmail.js';
 
-function saveContactsFromThreads(userId, threads) {
+async function saveContactsFromThreads(userId, threads) {
   for (const t of threads) {
     if (t.fromEmail && t.fromName && t.fromName !== t.fromEmail.split('@')[0]) {
-      try { upsertContact(userId, t.fromEmail, t.fromName); } catch {}
+      try { await upsertContact(userId, t.fromEmail, t.fromName); } catch {}
     }
   }
 }
@@ -39,12 +39,12 @@ export async function GET(request) {
   // Reply Later / Set Aside — read from local DB, then fetch thread metadata
   if (view === 'reply_later' || view === 'set_aside') {
     const folder = view === 'reply_later' ? 'REPLY_LATER' : 'SET_ASIDE';
-    const rows = getThreadsByFolder(userId, folder);
+    const rows = await getThreadsByFolder(userId, folder);
     if (rows.length === 0) return NextResponse.json({ threads: [] });
 
     const rawThreads = await getThreadsBatch(userId, rows.map(r => r.thread_id));
     const threads = rawThreads.map(parseThreadSummary).filter(Boolean);
-    saveContactsFromThreads(userId, threads);
+    await saveContactsFromThreads(userId, threads);
     return NextResponse.json({ threads });
   }
 
@@ -56,7 +56,7 @@ export async function GET(request) {
 
       const rawThreads = await getThreadsBatch(userId, threadList.map(t => t.id));
       const threads = rawThreads.map(parseThreadSummary).filter(Boolean);
-      saveContactsFromThreads(userId, threads);
+      await saveContactsFromThreads(userId, threads);
       return NextResponse.json({ threads });
     } catch (err) {
       return NextResponse.json({ error: err.message }, { status: 500 });
@@ -68,12 +68,12 @@ export async function GET(request) {
     const threadList = await listInboxThreads(userId);
     if (threadList.length === 0) return NextResponse.json({ threads: [] });
 
-    const approved = new Set(getAllApprovedEmails(userId));
-    const denied = new Set(getAllDeniedEmails(userId));
+    const approved = new Set(await getAllApprovedEmails(userId));
+    const denied = new Set(await getAllDeniedEmails(userId));
 
     const rawThreads = await getThreadsBatch(userId, threadList.map(t => t.id));
     const allSummaries = rawThreads.map(parseThreadSummary).filter(Boolean);
-    saveContactsFromThreads(userId, allSummaries);
+    await saveContactsFromThreads(userId, allSummaries);
     const threads = [];
     for (const summary of allSummaries) {
       const email = summary.fromEmail;
